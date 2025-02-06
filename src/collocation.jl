@@ -7,18 +7,33 @@ using OSQP
 using SparseArrays
 
 
-function interpolate_A(ts, As, ts_fine, As_fine)
+file = "_2_6_25.txt"
 
-    nx = length(As[1,:])
+x_file = "x_hist"*file
+u_file = "u_hist"*file
+
+function interpolate_matrix(ts, As, ts_fine, As_fine, order;
+                            lambda = 0.5)
+
+    nx = length(As[:,1,1])
+    nu = length(As[1,:,1])
     nt = length(ts)
 
-    As_r = zeros(nx, nx, nt)
-    A = zeros(nx,nx)
+    As_r = zeros(nx, nu, nt)
+    A = zeros(nx, nu)
 
-    j = 1
+    psi = zeros(nt, order+1)
     for i in 1:nt
-        As_r[:,:,i] = As[j:j+nx-1,:]
-        j += nx
+        for j in 1:order+1
+            psi[i,j] = ts[i]^(j-1)
+        end
+    end
+
+    for i in 1:nx
+        for j in 1:nu
+            w = (psi' * psi + lambda*LA.I) \ psi' * As[i,j,:]
+            As_r[i,j,:] = psi * w
+        end
     end
 
     A_spline = (t)->begin
@@ -40,14 +55,29 @@ function interpolate_A(ts, As, ts_fine, As_fine)
 end
 
 
-function interpolate_xdots(ts, xdots, ts_fine, xdots_fine)
+function interpolate_xdots(ts, xdots, ts_fine, xdots_fine, order)
 
     nx = length(xdots[:,1])
+    nt = length(ts)
+
+    xdots_r = zeros(size(xdots))
+
+    psi = zeros(nt, order+1)
+    for i in 1:nt
+        for j in 1:order+1
+            psi[i,j] = ts[i]^(j-1)
+        end
+    end
+
+    for i in 1:nx
+        w = (psi' * psi) \ psi' * xdots[i,:]
+        xdots_r[i,:] = psi * w
+    end
 
     xdot = zeros(nx)
     xdot_spline = (t)->begin
         for i in 1:nx
-            xdot[i] = FM.akima(ts, xdots[i,:], t)
+            xdot[i] = FM.akima(ts, xdots_r[i,:], t)
         end
         return xdot
     end
@@ -61,41 +91,43 @@ end
 
 
 
-function interpolate_B(ts, Bs, nx, ts_fine, Bs_fine)
+# function interpolate_B(ts, Bs, nx, ts_fine, Bs_fine)
 
-    nu = length(Bs[1,:])
-    nt = length(ts)
+#     nu = length(Bs[1,:])
+    # nt = length(ts)
 
-    Bs_r = zeros(nx, nu, nt)
-    B = zeros(nx,nu)
+    # Bs_r = zeros(nx, nu, nt)
+    # B = zeros(nx,nu)
 
-    j = 1
-    for i in 1:nt
-        Bs_r[:,:,i] = Bs[j:j+nx-1,:]
-        j += nx
-    end
+    # j = 1
+    # for i in 1:nt
+    #     Bs_r[:,:,i] = Bs[j:j+nx-1,:]
+    #     j += nx
+    # end
 
-    B_spline = (t)->begin
-        for i in eachindex(B[:,1])
-            for j in eachindex(B[1,:])
-                B[i,j] = FM.akima(ts, Bs_r[i,j,:],t)
-            end
-        end
-        return B
-    end
+#     B_spline = (t)->begin
+#         for i in eachindex(B[:,1])
+#             for j in eachindex(B[1,:])
+#                 B[i,j] = FM.akima(ts, Bs_r[i,j,:],t)
+#             end
+#         end
+#         return B
+#     end
 
-    j = 1
-    for i in 1:nx:nx*length(ts_fine)
-        Bs_fine[i:i+nx-1,:] = B_spline(ts_fine[j])
-        j += 1
-    end
+#     j = 1
+#     for i in 1:nx:nx*length(ts_fine)
+#         Bs_fine[i:i+nx-1,:] = B_spline(ts_fine[j])
+#         j += 1
+#     end
 
-    return Bs_fine
-end
+#     return Bs_fine
+# end
 
 
 function collocation(model, sim, A0, B0, Cf, x0, u0, xf, ts;
     max_iter = 20,
+    xs_0 = nothing,
+    us_0 = nothing,
     step_indices = [1],
     verbose = true,
     relax_factor = 0.01,
@@ -111,8 +143,8 @@ function collocation(model, sim, A0, B0, Cf, x0, u0, xf, ts;
     n_steps_vpm = 5000,
     rho = 1.225,
     mu = 1.81e-5,
-    p_per_step=1,
-    max_particles=Int(1e5),
+    p_per_step=5,
+    max_particles=Int(1e7),
     sigma_vlm_surf=1,
     sigma_rotor_surf=1,
     sigma_vpm_overwrite=1,
@@ -126,9 +158,18 @@ function collocation(model, sim, A0, B0, Cf, x0, u0, xf, ts;
     shed_starting=1,
     shed_unsteady=1,
     unsteady_shedcrit=1,
+    vpm_SFS = vpm.SFS_none,
     # ----- OUTPUT OPTIONS ------------------
-    save_path="runs/",
-    run_name="example_run")
+    save_path="runs/example_run_3/",
+    run_name="example_run_3")
+
+    f = open(x_file, "w")
+    print(f, "")
+    close(f)
+
+    f = open(u_file, "w")
+    print(f, "")
+    close(f)
 
     Cx = [1.0  0.0  0.0  0.0  0.0  0.0
           0.0  0.0  0.0  0.0  1.0  0.0]
@@ -149,29 +190,24 @@ function collocation(model, sim, A0, B0, Cf, x0, u0, xf, ts;
     xdots_hist = zeros(nx, nt+1, max_iter)
     xs[:,1] = x0
 
-    na = 10
-    indices = Int.(round.(range(1, nt, na))) 
+    indices = Int.(round.(range(1, nt, na-1))) 
     ts_sparse = ts[indices]
 
     j = 1
-    k = 1
     for i in 2:nt+1
         xs[:,i] = x0
         us[:,i-1] = u0
 
-        if i-1 == indices[k]
-            xdots_sparse[:,k] = zeros(length(x0))
-            # xdots[:,i-1] = (xs[:,i] - xs[:,i-1])/dt
-            As_sparse[j:j+nx-1, :] = A0 #A(xs[:,i-1], us[:,i-1])
-            Bs_sparse[j:j+nx-1, :] = B0 #B(xs[:,i-1], us[:,i-1])
-            k += 1
-            j += nx
-        end
+        # xdots[:,i] = zeros(length(x0))
+        # xdots[:,i-1] = (xs[:,i] - xs[:,i-1])/dt
+        As[j:j+nx-1, :] = A0 #A(xs[:,i-1], us[:,i-1])
+        Bs[j:j+nx-1, :] = B0 #B(xs[:,i-1], us[:,i-1])
+        j += nx
     end
 
-    As = interpolate_A(ts_sparse, As_sparse, ts, As)
-    Bs = interpolate_B(ts_sparse, Bs_sparse, nx, ts, Bs)
-    xdots = interpolate_xdots(ts_sparse, xdots_sparse, ts, xdots)
+    # As = interpolate_matrix(ts_sparse, As_sparse, ts, As, 3)
+    # Bs = interpolate_matrix(ts_sparse, Bs_sparse, ts, Bs, 3)
+    # xdots = interpolate_xdots(ts_sparse, xdots_sparse, ts, xdots, 3)
 
     xs_hist[:,:,1] = xs
     us_hist[:,:,1] = us
@@ -184,7 +220,7 @@ function collocation(model, sim, A0, B0, Cf, x0, u0, xf, ts;
     relax = 1.0
     while iter < max_iter && step >= 1.0 #&& step_size < 1.0
 
-        l = ones(3)*10000
+        l = ones(3)*500
         q = [1.0, 1.0, 100.0, 0.0, 0.0, 100.0]*0
 
         Q = [1.0 0.0 0.0 0.0 0.0 0.0 
@@ -210,6 +246,11 @@ function collocation(model, sim, A0, B0, Cf, x0, u0, xf, ts;
         xs_step = xs_hist[:,:,iter-1] + 1*px
         us_step = us_hist[:,:,iter-1] + 1*pu
 
+        if iter < 3 && xs_0 !== nothing
+            xs_step = xs_0
+            us_step = us_0
+        end
+
         p1 = plot(xs_step[4,:], xs_step[5,:], xlabel = "X (m)", ylabel = "Y (m)", label = false)
         p2 = plot(ts_c, us_step[1,:], xlabel = "Time (s)", ylabel = "Control Inputs", label = "Front", legend = :outertopright)
         plot!(ts_c, us_step[2,:], label = "Back")
@@ -224,29 +265,86 @@ function collocation(model, sim, A0, B0, Cf, x0, u0, xf, ts;
         xs_hist[:,:,iter] = xs_step
         us_hist[:,:,iter] = us_step
 
+        f = open(x_file, "a")
+        for i in eachindex(xs_step[:,1])
+            for j in eachindex(xs_step[1,:])
+                print(f, xs_step[i,j], " ")
+            end
+            print(f, "\n")
+        end
+        close(f)
+
+        f = open(u_file, "a")
+        for i in eachindex(us_step[:,1])
+            for j in eachindex(us_step[1,:])
+                print(f, us_step[i,j], " ")
+            end
+            print(f, "\n")
+        end
+        close(f)
 
 
         angle = ()
-        RPM = (t->FM.akima(ts, us_step[1,:], t)*30/pi, 
-               t->FM.akima(ts, us_step[2,:], t)*30/pi, 
-               t->FM.akima(ts, us_step[3,:], t)*30/pi)
+        RPM = (t->FM.akima(ts, us_step[1,:], t*ts[end])*30/pi, 
+               t->FM.akima(ts, us_step[2,:], t*ts[end])*30/pi, 
+               t->FM.akima(ts, us_step[3,:], t*ts[end])*30/pi)
 
-        v_vehicle = t->[FM.akima(ts, xs_step[1,:], t)
+        v_vehicle = t->[-FM.akima(ts, xs_step[1,:], t*ts[end])
                         0.0
-                        FM.akima(ts, xs_step[2,:], t)]
+                        FM.akima(ts, xs_step[2,:], t*ts[end])]
 
         angle_vehicle = t->[0.0
-                            FM.akima(ts, xs_step[6,:], t)
+                            FM.akima(ts, xs_step[6,:], t*ts[end])
                             0.0]
+
+        # RPM_hover = (t->u0[1]*30/pi,
+        #              t->u0[2]*30/pi,
+        #              t->u0[3]*30/pi)
+
+        # v_vehicle_hover = t->[-x0[1], 0.0, 0.0]
+        # angle_vehicle_hover = t->[0.0, x0[6], 0.0]
 
         sim.maneuver = uns.KinematicManeuver(angle, RPM, v_vehicle, angle_vehicle)
 
+        min_gamma = 0.001
+        max_gamma = 2.5
+        wake_treatment_strength = uns.remove_particles_strength(min_gamma^2, max_gamma^2; every_nsteps=1)
+
+        minsigma = sigma_vpm_overwrite*0.1
+        maxsigma = sigma_vpm_overwrite*5
+        wake_treatment_sigma = uns.remove_particles_sigma(minsigma, maxsigma; every_nsteps=1)
+
+
+        # wake_treatment_box = uns.remove_particles_box([-1.5, -10.0, -0.3], [13.64, 10.0, 5.0], 1)
+        # wake_treatment_box = uns.remove_particles_box([-1.0, -3.0, -0.7], [3.0, 3.0, 0.7], 1)
+        wake_treatment_box = uns.remove_particles_box([-4.0, -10.0, -3.0], [11.5, 10.0, 3.0], 1)
+
+
+
+        # extra_runtime_function = uns.concatenate(wake_treatment_box, wake_treatment_strength, wake_treatment_sigma, model)
+        extra_runtime_function = uns.concatenate(wake_treatment_box, wake_treatment_strength, model)
+
+        # extra_runtime_function(args...; optargs...) = wake_treatment(args...; optargs...)||model(args...; optargs...)
+
+        uns.set_V(sim.vehicle, [-x0[1], 0.0, 0.0])
+        uns.set_W(sim.vehicle, [0.0, x0[3], 0.0])
+
+        Oaxis = [cosd(-x0[6]) 0.0 sind(-x0[6]); 0.0 1.0 0.0; -sind(-x0[6]) 0.0 cosd(-x0[6])]
+
+
+        uns.vlm.setcoordsystem(sim.vehicle.system, sim.vehicle.system.O, Oaxis)
+
+
         uns.run_simulation(sim, n_steps_vpm;
-                        Vinf=(x,t)->zeros(3),
+                        Vinf=(x,t)->0*[5.0, 0.0, -5.0]*exp(-100*t),
                         rho=rho, mu=mu,
                         # ----- SOLVERS OPTIONS ----------------
                         p_per_step=p_per_step,
                         max_particles=max_particles,
+                        max_static_particles=nothing,
+                        vpm_integration=vpm.euler,
+                        vpm_viscous=vpm.Inviscid(),
+                        vpm_SFS=vpm_SFS,
                         sigma_vlm_surf=sigma_vlm_surf,
                         sigma_rotor_surf=sigma_rotor_surf,
                         sigma_vpm_overwrite=sigma_vpm_overwrite,
@@ -260,14 +358,17 @@ function collocation(model, sim, A0, B0, Cf, x0, u0, xf, ts;
                         shed_starting=shed_starting,
                         shed_unsteady=shed_unsteady,
                         unsteady_shedcrit=unsteady_shedcrit,
-                        extra_runtime_function=model,
+                        extra_runtime_function=extra_runtime_function,
                         # ----- OUTPUT OPTIONS ------------------
                         save_path=save_path,
                         run_name=run_name)
 
-        As_sparse = model.A
-        Bs_sparse = model.B
-        xdots_sparse = model.x_dots
+
+        As_sparse = model.A[:,:,1:end-1]
+        Bs_sparse = model.B[:,:,1:end-1]
+        xdots_sparse = model.x_dots[:,1:end-1]
+
+
 
         # if !isnan(xs_step[1,end])
         #     j = 1
@@ -288,9 +389,11 @@ function collocation(model, sim, A0, B0, Cf, x0, u0, xf, ts;
         #     end
         # end
 
-        As = interpolate_A(ts_sparse, As_sparse, ts, As)
-        Bs = interpolate_B(ts_sparse, Bs_sparse, nx, ts, Bs)
-        xdots_hist[:,:,iter] = interpolate_xdots(ts_sparse, xdots_sparse, ts, xdots)
+        As = interpolate_matrix(ts_sparse, As_sparse, ts, As, 5)
+        Bs = interpolate_matrix(ts_sparse, Bs_sparse, ts, Bs, 5)
+        xdots_hist[:,:,iter] = interpolate_xdots(ts_sparse, xdots_sparse, ts, xdots, 5)
+
+        As[:,4:5] .= 0.0
 
         iter += 1
         step_d1 = deepcopy(step)
@@ -449,3 +552,6 @@ function generate_matrices(As, Bs, Q, R, Cf, x0, u0, xf, nx, nu, nx_bar, nu_bar,
     
     return Q, H, q, limits[:,1], limits[:,2]
 end 
+
+
+
