@@ -7,13 +7,17 @@ using OSQP
 using SparseArrays
 
 
-file = "_2_6_25.txt"
+file = "_3_24_25.txt"
 
+A_file = "A"*file
+x_dot_file = "x_dot"*file
 x_file = "x_hist"*file
 u_file = "u_hist"*file
+force_file = "force"*file
+step_file = "step"*file
 
 function interpolate_matrix(ts, As, ts_fine, As_fine, order;
-                            lambda = 0.5)
+                            lambda =[0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
 
     nx = length(As[:,1,1])
     nu = length(As[1,:,1])
@@ -31,7 +35,7 @@ function interpolate_matrix(ts, As, ts_fine, As_fine, order;
 
     for i in 1:nx
         for j in 1:nu
-            w = (psi' * psi + lambda*LA.I) \ psi' * As[i,j,:]
+            w = (psi' * psi + lambda[i]*LA.I) \ psi' * As[i,j,:]
             As_r[i,j,:] = psi * w
         end
     end
@@ -125,10 +129,10 @@ end
 
 
 function collocation(model, sim, A0, B0, Cf, x0, u0, xf, ts;
-    max_iter = 20,
+    max_iter = 100,
     xs_0 = nothing,
     us_0 = nothing,
-    step_indices = [1],
+    step_indices = [4,5,6],
     verbose = true,
     relax_factor = 0.01,
     relax_step =  1.0,
@@ -171,6 +175,19 @@ function collocation(model, sim, A0, B0, Cf, x0, u0, xf, ts;
     print(f, "")
     close(f)
 
+    f = open(A_file, "w")
+    print(f, "")
+    close(f)
+
+    f = open(x_dot_file, "w")
+    print(f, "")
+    close(f)
+
+    f = open(step_file, "w")
+    print(f, "")
+    close(f)
+
+
     Cx = [1.0  0.0  0.0  0.0  0.0  0.0
           0.0  0.0  0.0  0.0  1.0  0.0]
 
@@ -190,8 +207,14 @@ function collocation(model, sim, A0, B0, Cf, x0, u0, xf, ts;
     xdots_hist = zeros(nx, nt+1, max_iter)
     xs[:,1] = x0
 
-    indices = Int.(round.(range(1, nt, na-1))) 
-    ts_sparse = ts[indices]
+    As_d1 = zeros(size(As))
+    Bs_d1 = zeros((size(Bs)))
+    xdots_d1 = zeros(size(xdots_hist[:,:,1]))
+
+    # indices = Int.(round.(range(1, nt, na-1))) 
+    # ts_sparse = ts[indices]
+
+    ts_sparse = model.t_sparse
 
     j = 1
     for i in 2:nt+1
@@ -217,10 +240,11 @@ function collocation(model, sim, A0, B0, Cf, x0, u0, xf, ts;
     step = 100
     step_d1 = step
     step_size = 0.1
-    relax = 1.0
-    while iter < max_iter && step >= 1.0 #&& step_size < 1.0
+    relax = 0.3
+    beta = 0.9
+    while iter < max_iter && step >= 0.3 #&& step_size < 1.0
 
-        l = ones(3)*500
+        l = ones(3)*1
         q = [1.0, 1.0, 100.0, 0.0, 0.0, 100.0]*0
 
         Q = [1.0 0.0 0.0 0.0 0.0 0.0 
@@ -229,7 +253,7 @@ function collocation(model, sim, A0, B0, Cf, x0, u0, xf, ts;
              0.0 0.0 0.0 1.0 0.0 0.0 
              0.0 0.0 0.0 0.0 1.0 0.0 
              0.0 0.0 0.0 0.0 0.0 1.0]*0
-        R = [4.0 0.0 0.0; 0.0 4.0 0.0; 0.0 0.0 1.0]
+        R = [4.0 0.0 0.0; 0.0 4.0 0.0; 0.0 0.0 1.0]*0
 
         ts_c, xs_c, us_c = solve_QP(As, Bs, Q, R, Cf, x0, u0, xf, ts[end], xs_hist[:,:,iter-1]', us_hist[:,:,iter-1]', xdots_hist[:,:,iter-1]'; lambda = l, q=q, u_lims = u_lims, x_lims = x_lims, Cx = Cx, x_scaling=x_scaling, u_scaling=u_scaling, g_scaling=g_scaling, o_scaling=o_scaling)
         # ts_c, xs_c, us_c = solve_QP(As, Bs, R, Cf, x0, u0, xf, ts[end], xs_hist[:,:,iter-1]', us_hist[:,:,iter-1]', xdots_hist[:,:,iter-1]'; lambda = l, u_lims = u_lims, x_scaling=ones(7), u_scaling=ones(3), g_scaling=ones(7), o_scaling=1.0)
@@ -239,12 +263,29 @@ function collocation(model, sim, A0, B0, Cf, x0, u0, xf, ts;
         step, _ = findmax(abs.(px[step_indices,:]))
 
 
+        f = open(step_file, "a")
+        for i in eachindex(px)
+            print(f, px[i], " ")
+        end
+        for i in eachindex(pu)
+            print(f, pu[i], " ")
+        end
+        print(f, "\n")
+        close(f)
+
+
         if verbose @show iter, step, step_size end
 
         step_size = relax_step/findmax(abs.(px[relax_index,:]))[1]
 
-        xs_step = xs_hist[:,:,iter-1] + 1*px
-        us_step = us_hist[:,:,iter-1] + 1*pu
+
+
+        f_relax = 0.1#relax/step
+
+        if f_relax > 1.0 f_relax = 1.0 end
+
+        xs_step = xs_hist[:,:,iter-1] + f_relax*px
+        us_step = us_hist[:,:,iter-1] + f_relax*pu
 
         if iter < 3 && xs_0 !== nothing
             xs_step = xs_0
@@ -283,18 +324,17 @@ function collocation(model, sim, A0, B0, Cf, x0, u0, xf, ts;
         end
         close(f)
 
-
         angle = ()
-        RPM = (t->FM.akima(ts, us_step[1,:], t*ts[end])*30/pi, 
-               t->FM.akima(ts, us_step[2,:], t*ts[end])*30/pi, 
-               t->FM.akima(ts, us_step[3,:], t*ts[end])*30/pi)
+        RPM = (t->FM.linear(ts, us_step[1,:], t*ts[end])*30/pi, 
+               t->FM.linear(ts, us_step[2,:], t*ts[end])*30/pi, 
+               t->FM.linear(ts, us_step[3,:], t*ts[end])*30/pi)
 
-        v_vehicle = t->[-FM.akima(ts, xs_step[1,:], t*ts[end])
+        v_vehicle = t->[-FM.linear(ts, xs_step[1,1:end-1], t*ts[end])
                         0.0
-                        FM.akima(ts, xs_step[2,:], t*ts[end])]
+                        FM.linear(ts, xs_step[2,1:end-1], t*ts[end])]
 
         angle_vehicle = t->[0.0
-                            FM.akima(ts, xs_step[6,:], t*ts[end])
+                            FM.linear(ts, xs_step[6,1:end-1], t*ts[end])
                             0.0]
 
         # RPM_hover = (t->u0[1]*30/pi,
@@ -306,6 +346,11 @@ function collocation(model, sim, A0, B0, Cf, x0, u0, xf, ts;
 
         sim.maneuver = uns.KinematicManeuver(angle, RPM, v_vehicle, angle_vehicle)
 
+        sim.nt = -1
+        sim.t = 0.0
+
+        sim.vehicle, _, _, _ = generate_uli_vehicle(Float64)
+
         min_gamma = 0.001
         max_gamma = 2.5
         wake_treatment_strength = uns.remove_particles_strength(min_gamma^2, max_gamma^2; every_nsteps=1)
@@ -314,12 +359,9 @@ function collocation(model, sim, A0, B0, Cf, x0, u0, xf, ts;
         maxsigma = sigma_vpm_overwrite*5
         wake_treatment_sigma = uns.remove_particles_sigma(minsigma, maxsigma; every_nsteps=1)
 
-
         # wake_treatment_box = uns.remove_particles_box([-1.5, -10.0, -0.3], [13.64, 10.0, 5.0], 1)
         # wake_treatment_box = uns.remove_particles_box([-1.0, -3.0, -0.7], [3.0, 3.0, 0.7], 1)
-        wake_treatment_box = uns.remove_particles_box([-4.0, -10.0, -3.0], [11.5, 10.0, 3.0], 1)
-
-
+        wake_treatment_box = uns.remove_particles_box([-4.0, -10.0, -2.0], [6.5, 10.0, 2.0], 1)
 
         # extra_runtime_function = uns.concatenate(wake_treatment_box, wake_treatment_strength, wake_treatment_sigma, model)
         extra_runtime_function = uns.concatenate(wake_treatment_box, wake_treatment_strength, model)
@@ -334,6 +376,7 @@ function collocation(model, sim, A0, B0, Cf, x0, u0, xf, ts;
 
         uns.vlm.setcoordsystem(sim.vehicle.system, sim.vehicle.system.O, Oaxis)
 
+        model.i .= 1
 
         uns.run_simulation(sim, n_steps_vpm;
                         Vinf=(x,t)->0*[5.0, 0.0, -5.0]*exp(-100*t),
@@ -364,11 +407,32 @@ function collocation(model, sim, A0, B0, Cf, x0, u0, xf, ts;
                         run_name=run_name)
 
 
-        As_sparse = model.A[:,:,1:end-1]
-        Bs_sparse = model.B[:,:,1:end-1]
-        xdots_sparse = model.x_dots[:,1:end-1]
+        As_sparse = model.A
+        Bs_sparse = model.B
+        xdots_sparse = model.x_dots
 
 
+
+
+        f = open(A_file, "a")
+        for i in eachindex(As_sparse[:,1,1])
+            for j in eachindex(As_sparse[1,:,1])
+                for it in eachindex(As_sparse[1,1,:])
+                    print(f, As_sparse[i,j,it], " ")
+                end
+                print(f, "\n")
+            end
+            print(f, "\n")
+        end
+        close(f)
+        f = open(x_dot_file, "a")
+        for i in eachindex(xdots_sparse[:,1])
+            for it in eachindex(xdots_sparse[1,:])
+                print(f, xdots_sparse[i,it], " ")
+            end
+            print(f, "\n")
+        end
+        close(f)
 
         # if !isnan(xs_step[1,end])
         #     j = 1
@@ -389,11 +453,23 @@ function collocation(model, sim, A0, B0, Cf, x0, u0, xf, ts;
         #     end
         # end
 
-        As = interpolate_matrix(ts_sparse, As_sparse, ts, As, 5)
-        Bs = interpolate_matrix(ts_sparse, Bs_sparse, ts, Bs, 5)
+        ts_fine = range(ts_sparse[1], ts_sparse[end], length(ts))
+
+        As = interpolate_matrix(ts_sparse, As_sparse, ts_fine, As, 5)
+        Bs = interpolate_matrix(ts_sparse, Bs_sparse, ts_fine, Bs, 5)
         xdots_hist[:,:,iter] = interpolate_xdots(ts_sparse, xdots_sparse, ts, xdots, 5)
 
         As[:,4:5] .= 0.0
+
+
+        As_d1 = beta*As_d1 + (1-beta)*As
+        Bs_d1 = beta*Bs_d1 + (1-beta)*Bs
+        xdots_d1 = beta*xdots_d1 + (1-beta)*xdots
+
+        As = As_d1/(1-beta^(iter-1))
+        Bs = Bs_d1/(1-beta^(iter-1))
+        xdots_hist[:,:,iter] = xdots_d1/(1-beta^(iter-1))
+
 
         iter += 1
         step_d1 = deepcopy(step)
@@ -555,3 +631,20 @@ end
 
 
 
+
+
+# num_curves = 6  # Number of line-scatter pairs
+# colors = palette(:default, num_curves)  # Get distinct colors
+
+# labels = ["vx", "vz", "θ_dot", "rx", "rz", "θ"]
+
+# p = plot(title = "dAz/d_", legend = :outertopright, xlabel = "Time (s)")
+# for i in 1:num_curves
+#     y_line = As_r[2,i,:]  # Generate line data
+#     y_scatter = A[2,i,:]
+    
+#     plot!(ts, y_line, label=labels[i], color=colors[i])
+#     scatter!(ts, y_scatter, label=false, color=colors[i], marker=:circle)
+# end
+
+# display(p)

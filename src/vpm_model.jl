@@ -4,12 +4,13 @@ vpm = uns.vpm
 vlm = uns.vlm
 
 
-file = "_2_6_25.txt"
+file = "_3_24_25.txt"
 
 A_file = "A"*file
 x_dot_file = "x_dot"*file
 aero_file = "aero"*file
 thrust_file = "thrust"*file
+force_file = "force"*file
 
 function get_value(x)
     if eltype(x) == Float64
@@ -70,7 +71,6 @@ function (m::VPMModel)(s)
     cog = m.cog
     r_rotors = m.r_rotors
     dir_rotors = m.dir_rotors
-
 
     wake_coupled = true
     sound_spd = 343
@@ -152,35 +152,35 @@ function (m::VPMModel)(s)
     # @show F M
     # @show sim_dual.vehicle.vlm_system.sol["Gamma"]
 
-    f = open(aero_file, "a")
-    for i in eachindex(F)
-        print(f, get_value(F[i]), " ")
-    end
-    for i in eachindex(M)
-        print(f, get_value(M[i]), " ")
-    end
-    print(f, "\n")
-    close(f)
+    # f = open(aero_file, "a")
+    # for i in eachindex(F)
+    #     print(f, get_value(F[i]), " ")
+    # end
+    # for i in eachindex(M)
+    #     print(f, get_value(M[i]), " ")
+    # end
+    # print(f, "\n")
+    # close(f)
     
     # calculate rotor forces
     # indices = [1,3,5,7,2,4,6,8,9]
     indices = [1,2,3]
     i = 1
-    f = open(thrust_file, "a")
+    # f = open(thrust_file, "a")
     for (i, rotor_system) in enumerate(sim_dual.vehicle.rotor_systems)
         for rotor in rotor_system
             T, Q = uns.vlm.calc_thrust_torque(rotor)
             if i < 3 T *= 4 end
             # @show T
-            print(f, get_value(T), " ")
+            # print(f, get_value(T), " ")
             T_vec = T*dir_rotors[:,indices[i]]
             F += sim_dual.vehicle.system.Oaxis' * T_vec
             M += LA.cross(r_rotors[:,indices[i]] - m.cog, T_vec)   
             i += 1
         end
     end
-    print(f, "\n")
-    close(f)
+    # print(f, "\n")
+    # close(f)
 
     F[1] *= -1
 
@@ -202,9 +202,37 @@ function (m::VPMModel)(s)
 end
 
 function (m::VPMModel)(sim, pfield, T, DT, args...; optargs...)
-
     # if T > 100*DT
     #     stop
+    # end
+    # global save_forces
+
+    # if save_forces && sim.t > 10*DT
+    #     V = sim.vehicle.V
+    #     W = sim.vehicle.W
+    #     Oaxis = sim.vehicle.system.Oaxis
+    #     O = sim.vehicle.system.O
+
+    #     theta = acosd(LA.dot(Oaxis[:,1], [1,0,0]))*sign(Oaxis[3,1])
+
+    #     x = [-V[1], V[3], W[2], -O[1], O[3], theta]
+    #     RPM_front = sim.vehicle.rotor_systems[1][1].RPM
+    #     RPM_back = sim.vehicle.rotor_systems[2][1].RPM
+    #     RPM_pusher = sim.vehicle.rotor_systems[3][1].RPM
+    #     u = [RPM_front, RPM_back, RPM_pusher]*pi/30
+
+    #     x_dot = m([x;u])
+
+    #     f = open(force_file, "a")
+    #     for i in eachindex(x_dot)
+    #         print(f, x_dot[i], " ")
+    #     end
+    #     print(f, "\n")
+    #     close(f)
+
+    #     if sim.t >= sim.ttot
+    #         save_forces = false
+    #     end
     # end
 
     if T > m.t_sparse[m.i[1]]
@@ -235,36 +263,36 @@ function (m::VPMModel)(sim, pfield, T, DT, args...; optargs...)
         m.A[:,:,m.i[1]] = A[:,1:length(x)]
         m.B[:,:,m.i[1]] = A[:,length(x)+1:end]
 
-        if m.i[1] < 2
-            @show "clear dynamic history"
-            f = open(A_file, "w")
-            print(f, "")
-            close(f)
-            f = open(x_dot_file, "w")
-            print(f, "")
-            close(f)
-            f = open(aero_file, "w")
-            print(f, "")
-            close(f)
-            f = open(thrust_file, "w")
-            print(f, "")
-            close(f)
-        end
+        # if m.i[1] < 2
+        #     @show "clear dynamic history"
+        #     f = open(A_file, "w")
+        #     print(f, "")
+        #     close(f)
+        #     f = open(x_dot_file, "w")
+        #     print(f, "")
+        #     close(f)
+        #     f = open(aero_file, "w")
+        #     print(f, "")
+        #     close(f)
+        #     f = open(thrust_file, "w")
+        #     print(f, "")
+        #     close(f)
+        # end
 
-        f = open(A_file, "a")
-        for i in eachindex(A[:,1])
-            for j in eachindex(A[1,:])
-                print(f, A[i,j], " ")
-            end
-            print(f, "\n")
-        end
-        close(f)
-        f = open(x_dot_file, "a")
-        for i in eachindex(m.x_dots[:,m.i[1]])
-            print(f, m.x_dots[i,m.i[1]], " ")
-        end
-        print(f, "\n")
-        close(f)
+        # f = open(A_file, "a")
+        # for i in eachindex(A[:,1])
+        #     for j in eachindex(A[1,:])
+        #         print(f, A[i,j], " ")
+        #     end
+        #     print(f, "\n")
+        # end
+        # close(f)
+        # f = open(x_dot_file, "a")
+        # for i in eachindex(m.x_dots[:,m.i[1]])
+        #     print(f, m.x_dots[i,m.i[1]], " ")
+        # end
+        # print(f, "\n")
+        # close(f)
 
         m.i .+= 1
 

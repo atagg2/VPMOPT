@@ -1,10 +1,10 @@
 import FLOWUnsteady as uns
 
 function generate_uli_vehicle(T)
-    mpft = 0.3048# general parameters
-    m = 3600.0   #confirm
-    I = 1e4      #confirm
-    cog = [3.631692, 0.0, 1.73257818]   #confirm
+    mpft = 0.3048/2# general parameters
+    m = 200.0  #confirm
+    I = 500.0  #confirm
+    cog = [0.0, 0.0, 0.0]   #confirm
     rho = 1.225
     mu = 1.81e-5
     g = 9.81# wing
@@ -12,7 +12,7 @@ function generate_uli_vehicle(T)
     yle_wing = [0.0, 25.265]*mpft
     zle_wing = yle_wing*-sind(2.0)
     c_wing = [5.44328, 2.84088]*mpft
-    twist_wing = [0.0, 0.0] .+ 5.0*pi/180
+    twist_wing = [0.0, 0.0] .+ 3.0*pi/180
     # airfoil = DF.readdlm("files/airfoils/LS(1)-0417.dat")        # check units
     camber_wing = fill((xc) -> 0, length(xle_wing))
     mirror_wing = true
@@ -95,7 +95,7 @@ function generate_uli_vehicle(T)
     end
     dir_rotors[:,end] = [-1.0, 0.0, 0.0]
 
-    rotor_files = fill("apc10x7.csv", 3)
+    rotor_files = fill("apc10x7_mini.csv", 3)
     data_path = "src/rotor/"
     rotors = Vector{uns.vlm.Rotor}(undef, length(rotor_files))
     for i in eachindex(rotors)

@@ -4,27 +4,29 @@ include("collocation.jl")
 
 import PreallocationTools as PT
 
+using DelimitedFiles
+
 x0 = zeros(6); x0[1] = 1e-5; x0[6] = 0.0
-u0 = [112.75403765737931
-112.38282567355749
-112.0]
+u0 = [80.58710033866438
+64.28626686863414
+100.0]
 
 # u0 = [0.1, 0.1, 200.0]
 
 # define desired final state
-xf = [60.0, 0.0, 0.0, 0.0, 40.0, 4.6]
+xf = [33.0, 0.0, 0.0, 0.0, 20.0, 1.2]
 Cf = [1.0 0.0 0.0 0.0 0.0 0.0
       0.0 1.0 0.0 0.0 0.0 0.0
       0.0 0.0 1.0 0.0 0.0 0.0
-      0.0 0.0 0.0 0.0 1.0 0.0]
-    #   0.0 0.0 0.0 0.0 0.0 1.0 0.0]
+      0.0 0.0 0.0 0.0 1.0 0.0
+      0.0 0.0 0.0 0.0 0.0 1.0]
 
 R = [1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0]
 
 
 nx = length(x0)
 nu = length(u0)
-nt = 100
+nt = 500
 tf = 10.0
 ts = range(0.0, tf, nt)
 dt = ts[2] - ts[1]
@@ -41,8 +43,8 @@ maneuver = uns.KinematicManeuver(angle, RPM, v_vehicle, angle_vehicle)
 sim = uns.Simulation(vehicle, maneuver, Vref, RPMref, tf);
 
 
-m = 3600.0    #confirm
-I = 1e4     #confirm
+m = 200.0  #confirm
+I = 500.0   #confirm
 cog = [0.0, 0.0, 0.0]   #confirm
 rho = 1.225
 mu = 1.81e-5
@@ -53,13 +55,24 @@ dt_vpm = 0.003 #30/(4*5400)
 n_steps_vpm = Int(round(tf/dt_vpm))
 
 
-nl = Int(round(n_steps_vpm/100))
+nl = Int(round(n_steps_vpm/300))
+ns = 15
 
-t_sparse = collect(range(dt_vpm*10, tf, nl))
+t_rng = collect(range(dt_vpm*10, tf-dt_vpm*ns, nl))
 
-A = zeros(nx, nx, nl)
-B = zeros(nx, nu, nl)
-x_dots = zeros(nx, nl)
+k = 1
+t_sparse = zeros(nl*ns)
+for i in 1:nl
+    for j in 1:ns
+        global k
+        t_sparse[k] = t_rng[i] + dt_vpm*(j-1)
+        k += 1
+    end
+end
+
+A = zeros(nx, nx, nl*ns)
+B = zeros(nx, nu, nl*ns)
+x_dots = zeros(nx, nl*ns)
 
 A0 = [-3.28141e-11  -2.09263e-9   -1.15879e-12  -0.0  -0.0  -0.171217 
 2.65775e-9   -0.00694101    7.68805e-10   0.0   0.0   0.0136669     
@@ -215,8 +228,12 @@ us_0[1,:] = range(u0[1], u0[1]*0.5, nt)
 us_0[2,:] = range(u0[2], 11.0, nt)
 us_0[3,:] = range(u0[3], u0[3]*1.5, nt)
 
-run_name = "example_run_2_6_25"
-save_path = "runs/"*run_name*"/"
+# xs_0 = Float64.(readdlm("xs_0.txt", ' ')[1:6,1:end-1])
+# us_0 = Float64.(readdlm("us_0.txt", ' ')[:,1:end-1])
+
+
+run_name = "example_run_3_24_25"
+save_path = nothing#"runs/"*run_name*"/"
 
                     
 xs_hist, us_hist, xdots_hist = collocation(model, sim, A0, B0, Cf, x0, u0, xf, ts;
