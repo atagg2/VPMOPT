@@ -3,7 +3,6 @@ include("vpm_model.jl")
 include("collocation.jl")
 
 import PreallocationTools as PT
-
 using DelimitedFiles
 
 x0 = zeros(6); x0[1] = 1e-5; x0[6] = 0.0
@@ -11,10 +10,23 @@ u0 = [80.58710033866438
 64.28626686863414
 100.0]
 
+
+# x_scaling = [33.0, 3.5, 2.7, 247.9, 20.0, 1.2]
+# u_scaling = [90.6, 76.7, 180.2]
+
+x_scaling = [33.0, 10.0, 10.0, 247.9, 20.0, 10.0]
+u_scaling = [90.6, 76.7, 180.2]
+
+# x_scaling = ones(6)
+# u_scaling = ones(3)
+
+
+x0 ./= x_scaling
+u0 ./= u_scaling
 # u0 = [0.1, 0.1, 200.0]
 
 # define desired final state
-xf = [33.0, 0.0, 0.0, 0.0, 20.0, 1.2]
+xf = [33.0, 0.0, 0.0, 0.0, 20.0, 1.2] ./ x_scaling
 Cf = [1.0 0.0 0.0 0.0 0.0 0.0
       0.0 1.0 0.0 0.0 0.0 0.0
       0.0 0.0 1.0 0.0 0.0 0.0
@@ -22,7 +34,6 @@ Cf = [1.0 0.0 0.0 0.0 0.0 0.0
       0.0 0.0 0.0 0.0 0.0 1.0]
 
 R = [1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0]
-
 
 nx = length(x0)
 nu = length(u0)
@@ -208,33 +219,48 @@ sim, pfield, staticpfield, static_particles_function = data_cache[1.0];
 model = VPMModel(sim, pfield, data_cache, dt_vpm, m, I, g, rho, cog, 
                     collect(r_rotors), dir_rotors, r_surfs, A, B, x_dots, [1], t_sparse, 
                     vlm_rlx, sigma_vlm_surf, sigma_rotor_surf, hubtiploss_correction, vlm_init, sigmafactor_vpmonvlm, 
-                    sigmafactor_vpm, sigma_vpm_overwrite, omit_shedding);
+                    sigmafactor_vpm, sigma_vpm_overwrite, omit_shedding, x_scaling, u_scaling);
 
 
-xs_0 = zeros(nx, nt+1)
-us_0 = zeros(nu, nt)
+# xs_0 = zeros(nx, nt+1)
+# us_0 = zeros(nu, nt)
 
-xs_0[1,:] = range(x0[1], xf[1], nt+1)
-xs_0[6,2:end] = xf[6] ./(1 .+ exp.(-2*(ts .- ts[end]/2)/2))
-xs_0[6,2:end] .-= xs_0[6,2] 
-xs_0[5,2:end] = xf[5] ./(1 .+ exp.(-2*(ts .- ts[end]/2)/2))
-xs_0[5,2:end] .-= xs_0[5,2] 
-for i in 2:nt+1
-    xs_0[2,i] = (xs_0[5,i] - xs_0[5,i-1])/(ts[2]-ts[1])
-    xs_0[3,i] = (xs_0[6,i] - xs_0[6,i-1])/(ts[2]-ts[1])
-end
-xs_0[2,2] = xs_0[2,3]/2
-us_0[1,:] = range(u0[1], u0[1]*0.5, nt)
-us_0[2,:] = range(u0[2], 11.0, nt)
-us_0[3,:] = range(u0[3], u0[3]*1.5, nt)
+# xs_0[1,:] = range(x0[1], xf[1], nt+1)
+# xs_0[6,2:end] = xf[6] ./(1 .+ exp.(-2*(ts .- ts[end]/2)/2))
+# xs_0[6,2:end] .-= xs_0[6,2] 
+# xs_0[5,2:end] = xf[5] ./(1 .+ exp.(-2*(ts .- ts[end]/2)/2))
+# xs_0[5,2:end] .-= xs_0[5,2] 
+# for i in 2:nt+1
+#     xs_0[2,i] = (xs_0[5,i] - xs_0[5,i-1])/(ts[2]-ts[1])
+#     xs_0[3,i] = (xs_0[6,i] - xs_0[6,i-1])/(ts[2]-ts[1])
+# end
+# xs_0[2,2] = xs_0[2,3]/2
+# us_0[1,:] = range(u0[1], u0[1]*0.5, nt)
+# us_0[2,:] = range(u0[2], 11.0, nt)
+# us_0[3,:] = range(u0[3], u0[3]*1.5, nt)
 
-# xs_0 = Float64.(readdlm("xs_0.txt", ' ')[1:6,1:end-1])
-# us_0 = Float64.(readdlm("us_0.txt", ' ')[:,1:end-1])
+xs_0 = Float64.(readdlm("xs_0.txt", ' ')[1:6,1:end-1])
+us_0 = Float64.(readdlm("us_0.txt", ' ')[:,1:end-1])
+
+xs_0 ./= x_scaling
+us_0 ./= u_scaling
+
+# x_scale = [33.0, 3.5, 2.7, 247.9, 20.0, 1.2]
+# u_scale = [90.6, 76.7, 180.2]
+
+# for i in eachindex(xs_0[1,:])
+#     xs_0[:,i] .*= x_scale
+# end
+
+# for i in eachindex(us_0[1,:])
+#     us_0[:,i] .*= u_scale
+# end
 
 
-run_name = "example_run_3_24_25"
+
+
+run_name = "example_5_17_25"
 save_path = nothing#"runs/"*run_name*"/"
-
                     
 xs_hist, us_hist, xdots_hist = collocation(model, sim, A0, B0, Cf, x0, u0, xf, ts;
                                             xs_0 = xs_0,
