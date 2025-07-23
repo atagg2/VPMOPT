@@ -16,11 +16,7 @@ u0 ./= u_scaling
 
 # define desired final state
 xf = [60.0, 0.0, 0.0, 300.0, 50.0, 3.0] ./ x_scaling
-Cf = [1.0 0.0 0.0 0.0 0.0 0.0
-      0.0 1.0 0.0 0.0 0.0 0.0
-      0.0 0.0 0.0 0.0 1.0 0.0
-      0.0 0.0 0.0 0.0 0.0 1.0]
-
+Cf = [0.0 1.0 0.0 0.0 0.0 0.0]
 
 nx = length(x0)
 nu = length(u0)
@@ -210,38 +206,39 @@ model = VPMModel(sim, pfield, data_cache, dt_vpm, m, I, g, rho, cog,
                     sigmafactor_vpm, sigma_vpm_overwrite, omit_shedding, x_scaling, u_scaling);
 
 
-# xs_0 = zeros(nx, nt)
-# us_0 = zeros(nu, nt)
+xs_0 = zeros(nx, nt)
+us_0 = zeros(nu, nt)
 
-# xs_0[1,:] = (xf[1] - x0[1])/tf * ts#range(x0[1], xf[1], nt)
-# # xs_0[2,:] = (xf[5]*x_scaling[5] - x0[5]*x_scaling[5])*2/tf^2/x_scaling[2] * ts
-# xs_0[4,:] = (xf[1]*x_scaling[1] - x0[1]*x_scaling[1])/2/tf * ts .^2 / x_scaling[4]#range(x0[4], xf[4], nt)
+xs_0[1,:] = (xf[1] - x0[1])/tf * ts#range(x0[1], xf[1], nt)
+# xs_0[2,:] = (xf[5]*x_scaling[5] - x0[5]*x_scaling[5])*2/tf^2/x_scaling[2] * ts
+xs_0[4,:] = (xf[1]*x_scaling[1] - x0[1]*x_scaling[1])/2/tf * ts .^2 / x_scaling[4]#range(x0[4], xf[4], nt)
+xs_0[6,:] = (xf[6] - x0[6])/tf * ts
 # xs_0[5,:] = (xf[5] - x0[5])/tf^2 * ts .^2 #range(x0[4], xf[5], nt)
-# # xs_0[6,2:end] = xf[6] ./(1 .+ exp.(-2*(ts .- ts[end]/2)/2))
-# # xs_0[6,2:end] .-= xs_0[6,2] 
-# # xs_0[5,2:end] = xf[5] ./(1 .+ exp.(-2*(ts .- ts[end]/2)/2))
-# # xs_0[5,2:end] .-= xs_0[5,2] 
-# # for i in 2:nt+1
-# #     xs_0[2,i] = (xs_0[5,i] - xs_0[5,i-1])/(ts[2]-ts[1])
-# #     xs_0[3,i] = (xs_0[6,i] - xs_0[6,i-1])/(ts[2]-ts[1])
-# # end
-# # xs_0[2,2] = xs_0[2,3]/2
-# us_0[1,:] = range(u0[1], u0[1], nt)
-# us_0[2,:] = range(u0[2], u0[2], nt)
-# us_0[3,:] = range(u0[3], u0[3], nt)
+# xs_0[6,2:end] = xf[6] ./(1 .+ exp.(-2*(ts .- ts[end]/2)/2))
+# xs_0[6,2:end] .-= xs_0[6,2] 
+# xs_0[5,2:end] = xf[5] ./(1 .+ exp.(-2*(ts .- ts[end]/2)/2))
+# xs_0[5,2:end] .-= xs_0[5,2] 
+# for i in 2:nt+1
+#     xs_0[2,i] = (xs_0[5,i] - xs_0[5,i-1])/(ts[2]-ts[1])
+#     xs_0[3,i] = (xs_0[6,i] - xs_0[6,i-1])/(ts[2]-ts[1])
+# end
+# xs_0[2,2] = xs_0[2,3]/2
+us_0[1,:] = range(u0[1], u0[1], nt)
+us_0[2,:] = range(u0[2], u0[2], nt)
+us_0[3,:] = range(u0[3], u0[3], nt)
 
-# us_0[4,:] = range(u0[4], 0.0, nt)
-# us_0[5,:] = range(u0[5], 0.0, nt)
-# us_0[6,:] = range(u0[6], 0.0, nt)
-# us_0[7,:] = range(0.0, -1.0*pi/180 / u_scaling[7], nt)
+us_0[4,:] = range(u0[4], 0.0, nt)
+us_0[5,:] = range(u0[5], 0.0, nt)
+us_0[6,:] = range(u0[6], 0.0, nt)
+us_0[7,:] = range(0.0, -1.0*pi/180 / u_scaling[7], nt)
 
 
 
-xs_0 = Float64.(readdlm("xs_0_joby.txt", ' ')[1:6,2:end-1])
-us_0 = Float64.(readdlm("us_0_joby.txt", ' ')[:,1:end-1])
+# xs_0 = Float64.(readdlm("xs_0_joby.txt", ' ')[1:6,2:end-1])
+# us_0 = Float64.(readdlm("us_0_joby.txt", ' ')[:,1:end-1])
 
-xs_0 ./= x_scaling
-us_0 ./= u_scaling
+# xs_0 ./= x_scaling
+# us_0 ./= u_scaling
 
 
 # x_scale = [33.0, 3.5, 2.7, 247.9, 20.0, 1.2]

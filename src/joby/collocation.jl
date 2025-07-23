@@ -158,7 +158,14 @@ function collocation(model, sim, A0, B0, Cf, x0, u0, xf, ts;
     close(f)
 
     Cx = [1.0  0.0  0.0  0.0  0.0  0.0
-          0.0  0.0  0.0  0.0  1.0  0.0]
+          0.0  1.0  0.0  0.0  0.0  0.0
+          0.0  0.0  0.0  0.0  1.0  0.0
+          0.0  0.0  0.0  0.0  0.0  1.0]
+
+    x_lims = [1e-8 2.0
+              -2.0 2.0
+              0.0 2.0
+              -2.0 2.0]
 
     nt = length(ts)
     nx = length(x0)
@@ -218,7 +225,7 @@ function collocation(model, sim, A0, B0, Cf, x0, u0, xf, ts;
     step_d1 = step
     step_size = 0.1
     l_relax = 0.03
-    u_relax = 0.03
+    u_relax = 0.1
     beta = 0.5
     while iter < max_iter && step >= 0.3 #&& step_size < 1.0
 
@@ -479,6 +486,7 @@ function collocation(model, sim, A0, B0, Cf, x0, u0, xf, ts;
 
 
 
+
         # if !isnan(xs_step[1,end])
         #     j = 1
         #     k = 1
@@ -530,8 +538,9 @@ function solve_QP(As, Bs, Q, R, Cf, x0, u0, xf, tf, x_0, u_0, xdot_0;
     nt = Int(length(As[:,1])/nx)
     nx_bar = nt*nx; nu_bar = nu*nt
     dt = tf/(nt-1)
-    Q, H, q, l, u = generate_matrices(As, Bs, Q, R, Cf, x0, u0, xf, nx, nu, nx_bar, nu_bar, dt, nt, x_0, u_0, xdot_0, lambda, q, u_lims, x_lims, Cx)
 
+    Q, H, q, l, u = generate_matrices(As, Bs, Q, R, Cf, x0, u0, xf, nx, nu, nx_bar, nu_bar, dt, nt, x_0, u_0, xdot_0, lambda, q, u_lims, x_lims, Cx)
+        
     # sol = OP_osqp(Qs, Hs, qs, ls, us)
     sol = OP_osqp(Q, H, q, l, u)
 
@@ -622,10 +631,12 @@ function equality_constraint_matrix(As, Bs, Cf, nx, nu, nx_bar, nu_bar, dt)
 end
 
 function generate_matrices(As, Bs, Q, R, Cf, x0, u0, xf, nx, nu, nx_bar, nu_bar, dt, nt, x_0, u_0, xdot_0, lambda, q, u_lims, x_lims, Cx)
+    
     Q = cost_matrix(Q, R, nx, nu, nx_bar, nu_bar, nt, dt, lambda, q)
     H = equality_constraint_matrix(As, Bs, Cf, nx, nu, nx_bar, nu_bar, dt)
     q = zeros(eltype(dt), nx_bar+nu_bar)
     b = zeros(eltype(dt), nx_bar)
+
     j = 1
     for i in 1:nx:nx_bar
         b[i:i+nx-1] = xdot_0[j,:]*dt - As[i:i+nx-1,:]*dt*x_0[j,:] - Bs[i:i+nx-1,:]*dt*u_0[j,:]
@@ -633,6 +644,7 @@ function generate_matrices(As, Bs, Q, R, Cf, x0, u0, xf, nx, nu, nx_bar, nu_bar,
     end
     b[1:nx] += (As[1:nx,:]*dt + LA.I)*x_0[1,:]
     b = vcat(b , -Cf*xf, zeros(3))
+
 
     H_ineq = [zeros(nu_bar, nx_bar) LA.I(nu_bar)]
     H = [H; H_ineq]
@@ -644,11 +656,13 @@ function generate_matrices(As, Bs, Q, R, Cf, x0, u0, xf, nx, nu, nx_bar, nu_bar,
         j += nx
     end
 
+
     H = [H; Cx_bar zeros(eltype(dt), length(Cx_bar[:,1]), nu_bar)]
 
 
     limits = zeros(length(b) + nu_bar + length(Cx_bar[:,1]), 2)
     limits[1:length(b),1] = -b; limits[1:length(b),2] = -b
+
 
     # limits[nx_bar + 5,:] = [8e-5, 10.0]
 
@@ -656,11 +670,13 @@ function generate_matrices(As, Bs, Q, R, Cf, x0, u0, xf, nx, nu, nx_bar, nu_bar,
         limits[i:i+nu-1,:] = u_lims
     end
     # limits[length(b)+4:length(b)+6,:] .= 1.0
-    # limits[length(b)+nu_bar-3:length(b)+nu_bar-1, 2] .= 0.3
+    limits[length(b)+nu_bar-3:length(b)+nu_bar-1, :] .= 0.0
+
 
     for i in length(b)+nu_bar+1:length(Cx[:,1]):length(b)+nu_bar+length(Cx_bar[:,1])
         limits[i:i+length(Cx[:,1])-1,:] = x_lims
     end
+    limits[length(b)+nu_bar+length(Cx_bar[:,1])-6, :] .= 0.0
     
     return Q, H, q, limits[:,1], limits[:,2]
 end 

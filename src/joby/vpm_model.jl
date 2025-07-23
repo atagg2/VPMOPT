@@ -99,13 +99,22 @@ function (m::VPMModel)(s)
             t->u[2]*30/pi,
             t->u[3]*30/pi)
 
-    angle = (t->u[4]*180/pi,
-             t->u[5]*180/pi,
-             t->u[6]*180/pi,
-             t->u[7]*180/pi)
+    angle = (t->[0.0, u[4]*180/pi, 0.0],
+             t->[0.0, u[5]*180/pi, 0.0],
+             t->[0.0, u[6]*180/pi, 0.0],
+             t->[0.0, u[7]*180/pi, 0.0])
 
 
     sim_dual.maneuver = uns.KinematicManeuver(angle, RPM, sim_dual.maneuver.Vvehicle, sim_dual.maneuver.anglevehicle)
+
+    angles = uns.get_angles(sim_dual.maneuver, sim_dual.t/sim_dual.ttot)
+
+    for i in 1:uns.get_ntltsys(sim_dual.vehicle)
+        sys = sim_dual.vehicle.tilting_systems[i];
+        Oaxis = uns.gt.rotation_matrix2([-a for a in angles[i]]...);
+        vlm.setcoordsystem(sys, sys.O, Oaxis, reset=false);
+    end
+
     # sim_dual.maneuver = uns.KinematicManeuver(angle, RPM, v_vehicle, angle_vehicle)
 
     # relax = m.pfield.relaxation != vpm.relaxation_none &&
@@ -346,6 +355,9 @@ function update_vehicle!(vehicle_dual::uns.UVLMVehicle{N, M, TD}, vehicle::uns.U
         end
     end
 
+    for i in eachindex(vehicle.tilting_systems)
+        update_wing_system!(vehicle_dual.tilting_systems[i], vehicle.tilting_systems[i], u)
+    end
 
     # @show vehicle_dual.rotor_systems[1][1]._wingsystem.wings[1]._HSs
 
@@ -357,7 +369,6 @@ function update_vehicle!(vehicle_dual::uns.UVLMVehicle{N, M, TD}, vehicle::uns.U
 
     vehicle_dual.V .= 0.0# vehicle.V
     vehicle_dual.W .= 0.0#vehicle.W
-
 
     return vehicle_dual
 end
