@@ -4,10 +4,9 @@ vpm = uns.vpm
 vlm = uns.vlm
 
 
-file = "derivative_regression.txt"
+file = "_5_10_25.txt"
 
 A_file = "A"*file
-B_file = "B"*file
 x_dot_file = "x_dot"*file
 aero_file = "aero"*file
 thrust_file = "thrust"*file
@@ -99,22 +98,8 @@ function (m::VPMModel)(s)
             t->u[2]*30/pi,
             t->u[3]*30/pi)
 
-    angle = (t->[0.0, u[4]*180/pi, 0.0],
-             t->[0.0, u[5]*180/pi, 0.0],
-             t->[0.0, u[6]*180/pi, 0.0],
-             t->[0.0, u[7]*180/pi, 0.0])
 
-
-    sim_dual.maneuver = uns.KinematicManeuver(angle, RPM, sim_dual.maneuver.Vvehicle, sim_dual.maneuver.anglevehicle)
-
-    angles = uns.get_angles(sim_dual.maneuver, sim_dual.t/sim_dual.ttot)
-
-    for i in 1:uns.get_ntltsys(sim_dual.vehicle)
-        sys = sim_dual.vehicle.tilting_systems[i];
-        Oaxis = uns.gt.rotation_matrix2([-a for a in angles[i]]...);
-        vlm.setcoordsystem(sys, sys.O, Oaxis, reset=false);
-    end
-
+    sim_dual.maneuver = uns.KinematicManeuver(sim_dual.maneuver.angle, RPM, sim_dual.maneuver.Vvehicle, sim_dual.maneuver.anglevehicle)
     # sim_dual.maneuver = uns.KinematicManeuver(angle, RPM, v_vehicle, angle_vehicle)
 
     # relax = m.pfield.relaxation != vpm.relaxation_none &&
@@ -184,17 +169,18 @@ function (m::VPMModel)(s)
     
     # calculate rotor forces
     # indices = [1,3,5,7,2,4,6,8,9]
+    indices = [1,2,3]
     i = 1
     # f = open(thrust_file, "a")
-    for (j, rotor_system) in enumerate(sim_dual.vehicle.rotor_systems)
-        delta = u[j+3]
+    for (i, rotor_system) in enumerate(sim_dual.vehicle.rotor_systems)
         for rotor in rotor_system
             T, Q = uns.vlm.calc_thrust_torque(rotor)
+            if i < 3 T *= 4 end
             # @show T
             # print(f, get_value(T), " ")
-            T_vec = T*[-cos(delta), 0.0, sin(delta)]
+            T_vec = T*dir_rotors[:,indices[i]]
             F += sim_dual.vehicle.system.Oaxis' * T_vec
-            M += LA.cross(r_rotors[i,:] - m.cog, T_vec)   
+            M += LA.cross(r_rotors[:,indices[i]] - m.cog, T_vec)   
             i += 1
         end
     end
@@ -254,81 +240,70 @@ function (m::VPMModel)(sim, pfield, T, DT, args...; optargs...)
     #     end
     # end
 
-    if m.i[1] <= length(m.t_sparse)
-        if T > m.t_sparse[m.i[1]]
+    if T > m.t_sparse[m.i[1]]
+
+        V = sim.vehicle.V
+        W = sim.vehicle.W
+        Oaxis = sim.vehicle.system.Oaxis
+        O = sim.vehicle.system.O
+
+        theta = acosd(LA.dot(Oaxis[:,1], [1,0,0]))*sign(Oaxis[3,1])
+
+        x = [-V[1], V[3], W[2]*180/pi, -O[1], O[3], theta]
+        RPM_front = sim.vehicle.rotor_systems[1][1].RPM
+        RPM_back = sim.vehicle.rotor_systems[2][1].RPM
+        RPM_pusher = sim.vehicle.rotor_systems[3][1].RPM
+        u = [RPM_front, RPM_back, RPM_pusher]*pi/30
 
 
-            V = sim.vehicle.V
-            W = sim.vehicle.W
-            Oaxis = sim.vehicle.system.Oaxis
-            O = sim.vehicle.system.O
+        @show x u
 
-            if Oaxis[1,1] > 1.0
-                theta = 0.0
-            elseif Oaxis[1,1] < -1.0
-                theta = pi
-            else
-                theta = acos(LA.dot(Oaxis[:,1], [1,0,0]))*sign(Oaxis[3,1])
-            end
-            x = [-V[1], V[3], W[2]*180/pi, -O[1], O[3], theta*180/pi]
-            # RPM_front = sim.vehicle.rotor_systems[1][1].RPM
-            # RPM_middle = sim.vehicle.rotor_systems[2][1].RPM
-            # RPM_back = sim.vehicle.rotor_systems[3][1].RPM
-            RPM_front, RPM_middle, RPM_back = sim.maneuver.RPM[1](T/sim.ttot), sim.maneuver.RPM[2](T/sim.ttot), sim.maneuver.RPM[3](T/sim.ttot)
-            delta_front, delta_middle, delta_back, delta_cs = sim.maneuver.angle[1](T/sim.ttot)[2], sim.maneuver.angle[2](T/sim.ttot)[2], sim.maneuver.angle[3](T/sim.ttot)[2], sim.maneuver.angle[4](T/sim.ttot)[2]
-            
-            u = [RPM_front*pi/30, RPM_middle*pi/30, RPM_back*pi/30, delta_front*pi/180, delta_middle*pi/180, delta_back*pi/180, delta_cs*pi/180]
+        x ./= m.x_scaling
+        u ./= m.u_scaling
 
+        update_pfield!(m.pfield, pfield)
 
-            @show x u
+        # A = FD.jacobian(m, [x; u], FD.JacobianConfig(m, [x; u], FD.Chunk(length([x; u]))), Val{false}())
 
-            x ./= m.x_scaling
-            u ./= m.u_scaling
+        m.x_dots[:,m.i[1]] = m([x;u])
 
-            update_pfield!(m.pfield, pfield)
+        A = FD.jacobian(m, [x; u])
 
-            # A = FD.jacobian(m, [x; u], FD.JacobianConfig(m, [x; u], FD.Chunk(length([x; u]))), Val{false}())
+        m.A[:,:,m.i[1]] = A[:,1:length(x)]
+        m.B[:,:,m.i[1]] = A[:,length(x)+1:end]
 
-            m.x_dots[:,m.i[1]] = m([x;u])
+        # if m.i[1] < 2
+        #     @show "clear dynamic history"
+        #     f = open(A_file, "w")
+        #     print(f, "")
+        #     close(f)
+        #     f = open(x_dot_file, "w")
+        #     print(f, "")
+        #     close(f)
+        #     f = open(aero_file, "w")
+        #     print(f, "")
+        #     close(f)
+        #     f = open(thrust_file, "w")
+        #     print(f, "")
+        #     close(f)
+        # end
 
-            A = FD.jacobian(m, [x; u])
+        # f = open(A_file, "a")
+        # for i in eachindex(A[:,1])
+        #     for j in eachindex(A[1,:])
+        #         print(f, A[i,j], " ")
+        #     end
+        #     print(f, "\n")
+        # end
+        # close(f)
+        # f = open(x_dot_file, "a")
+        # for i in eachindex(m.x_dots[:,m.i[1]])
+        #     print(f, m.x_dots[i,m.i[1]], " ")
+        # end
+        # print(f, "\n")
+        # close(f)
 
-            m.A[:,:,m.i[1]] = A[:,1:length(x)]
-            m.B[:,:,m.i[1]] = A[:,length(x)+1:end]
-
-            # if m.i[1] < 2
-            #     @show "clear dynamic history"
-            #     f = open(A_file, "w")
-            #     print(f, "")
-            #     close(f)
-            #     f = open(x_dot_file, "w")
-            #     print(f, "")
-            #     close(f)
-            #     f = open(aero_file, "w")
-            #     print(f, "")
-            #     close(f)
-            #     f = open(thrust_file, "w")
-            #     print(f, "")
-            #     close(f)
-            # end
-
-            # f = open(A_file, "a")
-            # for i in eachindex(A[:,1])
-            #     for j in eachindex(A[1,:])
-            #         print(f, A[i,j], " ")
-            #     end
-            #     print(f, "\n")
-            # end
-            # close(f)
-            # f = open(x_dot_file, "a")
-            # for i in eachindex(m.x_dots[:,m.i[1]])
-            #     print(f, m.x_dots[i,m.i[1]], " ")
-            # end
-            # print(f, "\n")
-            # close(f)
-
-            m.i .+= 1
-        end
+        m.i .+= 1
 
     end
 
@@ -343,7 +318,7 @@ function update_vehicle!(vehicle_dual::uns.UVLMVehicle{N, M, TD}, vehicle::uns.U
 
     # update vehicle velocity
     V = [-vx, 0.0, vz]
-    W = [0.0, theta_dot*pi/180, 0.0]
+    W = [0.0, theta_dot, 0.0]
 
     Oaxis = [cosd(-theta) 0.0 sind(-theta); 0.0 1.0 0.0; -sind(-theta) 0.0 cosd(-theta)]
     O = [-rx, zero(TD), rz]
@@ -360,9 +335,6 @@ function update_vehicle!(vehicle_dual::uns.UVLMVehicle{N, M, TD}, vehicle::uns.U
         end
     end
 
-    for i in eachindex(vehicle.tilting_systems)
-        update_wing_system!(vehicle_dual.tilting_systems[i], vehicle.tilting_systems[i], u)
-    end
 
     # @show vehicle_dual.rotor_systems[1][1]._wingsystem.wings[1]._HSs
 
@@ -374,6 +346,7 @@ function update_vehicle!(vehicle_dual::uns.UVLMVehicle{N, M, TD}, vehicle::uns.U
 
     vehicle_dual.V .= 0.0# vehicle.V
     vehicle_dual.W .= 0.0#vehicle.W
+
 
     return vehicle_dual
 end

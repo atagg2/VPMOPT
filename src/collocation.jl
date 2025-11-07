@@ -2,14 +2,14 @@ import ForwardDiff as FD
 # import FastDifferentiation as FsD
 import FLOWMath as FM
 import LinearAlgebra as LA
+using Plots
 using OSQP
 using SparseArrays
-using FLOWUnsteady
 
-file = "derivative_regression.txt"
+
+file = "_5_10_25.txt"
 
 A_file = "A"*file
-B_file = "B"*file
 x_dot_file = "x_dot"*file
 x_file = "x_hist"*file
 u_file = "u_hist"*file
@@ -93,240 +93,43 @@ function interpolate_xdots(ts, xdots, ts_fine, xdots_fine, order)
     return xdots_fine
 end
 
-function generate_monitor_rotors_2( rotors::Array{<:vlm.Rotor, 1},
-                                    J_ref, rho_ref, RPM_ref,
-                                    nsteps_sim::Int;
-                                    t_scale=1.0,                    # Time scaling factor
-                                    t_lbl="Simulation time (s)",    # Time-axis label
-                                    # OUTPUT OPTIONS
-                                    out_figs=[],
-                                    out_figaxs=[],
-                                    save_path=nothing,
-                                    run_name="rotor",
-                                    figname="monitor_rotor",
-                                    disp_conv=false,
-                                    conv_suff="_convergence.csv",
-                                    save_init_plots=false,
-                                    figsize_factor=5/6,
-                                    nsteps_plot=1,
-                                    nsteps_savefig=10,
-                                    colors="rgbcmy"^100,
-                                    stls="o^*.px"^100, )
-
-    fcalls = 0                  # Number of function calls
-
-    # Name of convergence file
-    if save_path!=nothing
-        fname = joinpath(save_path, run_name*conv_suff)
-        fname2 = joinpath(save_path, run_name*"_dist.csv")
-    end
-
-    # Function for run_vpm! to call on each iteration
-    function extra_runtime_function(sim::uns.Simulation{V, M, R},
-                                    PFIELD::vpm.ParticleField,
-                                    T, DT; optargs...
-                                   ) where{V<:uns.AbstractVLMVehicle, M, R}
-
-        # rotors = vcat(sim.vehicle.rotor_systems...)
-        angle = T*360*RPM_ref/60
-        t_scaled = T*t_scale
-
-        if fcalls==0
-            # Convergence file header
-            if save_path!=nothing
-                f = open(fname, "w")
-                print(f, "ref age (deg),T,DT")
-                for (i, rotor) in enumerate(rotors)
-                    print(f, ",RPM_$i,CT_$i,CQ_$i,eta_$i")
-                end
-                print(f, "\n")
-                close(f)
-                f2 = open(fname2, "w")
-                print(f2, "")
-                close(f2)
-            end
-        end
-
-        # Write rotor position and time on convergence file
-        if save_path!=nothing
-            f = open(fname, "a")
-            print(f, angle, ",", T, ",", DT)
-            f2 = open(fname2, "a")
-        end
-
-        # Plot performance parameters
-        for (i, rotor) in enumerate(rotors)
-            CT, CQ = vlm.calc_thrust_torque_coeffs(rotor, rho_ref)
-            eta = J_ref*CT/(2*pi*CQ)
-
-            if save_path!=nothing
-                print(f, ",", rotor.RPM, ",", CT, ",", CQ, ",", eta)
-                Np = vcat(rotor.sol["Np"]["field_data"]...)
-                Tp = vcat(rotor.sol["Tp"]["field_data"]...)
-                for j in eachindex(Np)
-                    print(f2, Np[j], " ")
-                end
-                for j in eachindex(Tp)
-                    print(f2, Tp[j], " ")
-                end
-            end
-        end
-
-        # Close convergence file
-        if save_path!=nothing
-            print(f, "\n")
-            close(f)
-            print(f2, "\n")
-            close(f2)
-        end
-
-        fcalls += 1
-
-        return false
-    end
-
-    return extra_runtime_function
-end
 
 
-function generate_monitor_wing_2(wing, Vinf::Function, b_ref, ar_ref,
-                                rho_ref, qinf_ref, nsteps_sim::Int;
-                                lencrit_f=0.5,      # Factor for critical length to ignore horseshoe forces
-                                L_dir=[0,0,1],      # Direction of lift component
-                                D_dir=[1,0,0],      # Direction of drag component
-                                include_trailingboundvortex=false,
-                                calc_aerodynamicforce_fun=uns.generate_calc_aerodynamicforce(),
-                                # OUTPUT OPTIONS
-                                out_Lwing=nothing,
-                                out_Dwing=nothing,
-                                out_CLwing=nothing,
-                                out_CDwing=nothing,
-                                out_figs=[],
-                                out_figaxs=[],
-                                save_path=nothing,
-                                run_name="wing",
-                                figname="monitor_wing",
-                                disp_plot=false,
-                                title_lbl="",
-                                cl_ttl="Spanwise lift distribution",
-                                cd_ttl="Spanwise drag distribution",
-                                X_offset=t->zeros(3),
-                                S_proj=t->[0, 1, 0],
-                                conv_suff="_convergence.csv",
-                                figsize_factor=5/6,
-                                nsteps_plot=1,
-                                nsteps_savefig=10,
-                                debug=false)
+# function interpolate_B(ts, Bs, nx, ts_fine, Bs_fine)
 
-    fcalls = 0                  # Number of function calls
-    prev_wing = nothing
+#     nu = length(Bs[1,:])
+    # nt = length(ts)
 
-    # Critical length to ignore horseshoe forces
-    meanchord = b_ref/ar_ref
-    lencrit = lencrit_f*meanchord/vlm.get_m(wing)
+    # Bs_r = zeros(nx, nu, nt)
+    # B = zeros(nx,nu)
 
-    # Name of convergence file
-    if save_path!=nothing
-        fname = joinpath(save_path, run_name*conv_suff)
-        fname2 = joinpath(save_path, run_name*"_dist.csv")
-    end
+    # j = 1
+    # for i in 1:nt
+    #     Bs_r[:,:,i] = Bs[j:j+nx-1,:]
+    #     j += nx
+    # end
 
-    function extra_runtime_function(sim, PFIELD, T, DT; optargs...)
+#     B_spline = (t)->begin
+#         for i in eachindex(B[:,1])
+#             for j in eachindex(B[1,:])
+#                 B[i,j] = FM.akima(ts, Bs_r[i,j,:],t)
+#             end
+#         end
+#         return B
+#     end
 
-        aux = PFIELD.nt/nsteps_sim
-        clr = (1-aux, 0, aux)
+#     j = 1
+#     for i in 1:nx:nx*length(ts_fine)
+#         Bs_fine[i:i+nx-1,:] = B_spline(ts_fine[j])
+#         j += 1
+#     end
 
-        if fcalls==0
-            # Convergence file header
-            if save_path!=nothing
-                f = open(fname, "w")
-                print(f, "T,CL,CD\n")
-                close(f)
-                f2 = open(fname2, "w")
-                print(f2, "")
-                close(f2)
-            end
-        end
-
-        if PFIELD.nt>2
-
-            t = PFIELD.t
-            y2b = 2*[uns.dot(vlm.getControlPoint(wing, i) .- X_offset(t), S_proj(t))
-                                                for i in 1:vlm.get_m(wing)]/b_ref
-
-            Lhat = L_dir isa Function ? L_dir(PFIELD.t) : L_dir
-            Dhat = D_dir isa Function ? D_dir(PFIELD.t) : D_dir
-
-            # Force at each VLM element
-            Ftot = calc_aerodynamicforce_fun(wing, prev_wing, PFIELD, Vinf, DT,
-                                                            rho_ref; t=t,
-                                                            spandir=uns.cross(Lhat, Dhat),
-                                                            lencrit=lencrit,
-                                                            include_trailingboundvortex=include_trailingboundvortex,
-                                                            debug=debug)
-            L, D, S = uns.decompose(Ftot, Lhat, Dhat)
-            vlm._addsolution(wing, "L", L)
-            vlm._addsolution(wing, "D", D)
-            vlm._addsolution(wing, "S", S)
-
-            # Force per unit span at each VLM element
-            ftot = calc_aerodynamicforce_fun(wing, prev_wing, PFIELD, Vinf, DT,
-                                        rho_ref; t=PFIELD.t, per_unit_span=true,
-                                        spandir=uns.cross(Lhat, Dhat),
-                                        lencrit=lencrit,
-                                        include_trailingboundvortex=include_trailingboundvortex,
-                                        debug=debug)
-            l, d, s = uns.decompose(ftot, Lhat, Dhat)
-
-            # Lift of the wing
-            Lwing = sum(L)
-            Lwing = sign(uns.dot(Lwing, Lhat))*uns.norm(Lwing)
-            CLwing = Lwing/(qinf_ref*b_ref^2/ar_ref)
-            cl = broadcast(x -> sign(uns.dot(x, Lhat)), l) .* uns.norm.(l) / (qinf_ref*b_ref/ar_ref)
-
-            # Drag of the wing
-            Dwing = sum(D)
-            Dwing = sign(uns.dot(Dwing, Dhat))*uns.norm(Dwing)
-            CDwing = Dwing/(qinf_ref*b_ref^2/ar_ref)
-            cd = broadcast(x -> sign(uns.dot(x, Dhat)), d) .* uns.norm.(d) / (qinf_ref*b_ref/ar_ref)
-
-            # vlm._addsolution(wing, "cl", cl)
-            # vlm._addsolution(wing, "cd", cd)
-
-            if out_Lwing!=nothing; push!(out_Lwing, Lwing); end;
-            if out_Dwing!=nothing; push!(out_Dwing, Dwing); end;
-            if out_CLwing!=nothing; push!(out_CLwing, CLwing); end;
-            if out_CDwing!=nothing; push!(out_CDwing, CDwing); end;
-
-            if save_path != nothing
-                # Write rotor position and time on convergence file
-                f = open(fname, "a")
-                print(f, T, ",", CLwing, ",", CDwing, "\n")
-                close(f)
-
-                f2 = open(fname2, "a")
-                for i in eachindex(L)
-                    print(f2, L[i][3], " ")
-                end
-                for i in eachindex(D)
-                    print(f2, D[i][1], " ")
-                end
-                print(f2, "\n")
-                close(f2)
-
-            end
-        end
-
-        prev_wing = deepcopy(wing)
-        fcalls += 1
-        return false
-    end
-end
-
+#     return Bs_fine
+# end
 
 
 function collocation(model, sim, A0, B0, Cf, x0, u0, xf, ts;
-    max_iter = 200,
+    max_iter = 100,
     xs_0 = nothing,
     us_0 = nothing,
     step_indices = [4,5,6],
@@ -334,8 +137,8 @@ function collocation(model, sim, A0, B0, Cf, x0, u0, xf, ts;
     relax_factor = 0.01,
     relax_step =  1.0,
     relax_index = [5],
-    u_lims = [0.0 250.0; 0.0 250.0; 0.0 250.0; 0.0 pi/2; 0.0 pi/2; 0.0 pi/2; -0.5 0.5],
-    x_lims = [1e-8 200.0; 0.0 200.0],
+    u_lims = [8e-5 600.0; 8e-5 600.0; 8e-5 600.0],
+    x_lims = [8e-5 200.0; 8e-5 200.0],
     x_scaling = ones(length(x0)),
     u_scaling = ones(length(u0)),
     g_scaling = ones(length(x0)),
@@ -345,7 +148,7 @@ function collocation(model, sim, A0, B0, Cf, x0, u0, xf, ts;
     rho = 1.225,
     mu = 1.81e-5,
     p_per_step=5,
-    max_particles=int(1e7),
+    max_particles=Int(1e7),
     sigma_vlm_surf=1,
     sigma_rotor_surf=1,
     sigma_vpm_overwrite=1,
@@ -360,7 +163,7 @@ function collocation(model, sim, A0, B0, Cf, x0, u0, xf, ts;
     shed_unsteady=1,
     unsteady_shedcrit=1,
     vpm_SFS = vpm.SFS_none,
-    # ----- output options ------------------
+    # ----- OUTPUT OPTIONS ------------------
     save_path="runs/example_run_3/",
     run_name="example_run_3")
 
@@ -376,10 +179,6 @@ function collocation(model, sim, A0, B0, Cf, x0, u0, xf, ts;
     print(f, "")
     close(f)
 
-    f = open(B_file, "w")
-    print(f, "")
-    close(f)
-
     f = open(x_dot_file, "w")
     print(f, "")
     close(f)
@@ -389,14 +188,7 @@ function collocation(model, sim, A0, B0, Cf, x0, u0, xf, ts;
     close(f)
 
     Cx = [1.0  0.0  0.0  0.0  0.0  0.0
-          0.0  1.0  0.0  0.0  0.0  0.0
-          0.0  0.0  0.0  0.0  1.0  0.0
-          0.0  0.0  0.0  0.0  0.0  1.0]
-
-    x_lims = [1e-8 2.0
-              -2.0 2.0
-              0.0 2.0
-              -2.0 2.0]
+          0.0  0.0  0.0  0.0  1.0  0.0]
 
     nt = length(ts)
     nx = length(x0)
@@ -455,23 +247,21 @@ function collocation(model, sim, A0, B0, Cf, x0, u0, xf, ts;
     step = 100
     step_d1 = step
     step_size = 0.1
-    l_relax = 0.03
+    l_relax = 0.01
     u_relax = 0.3
-    beta = 0.2
+    beta = 0.0
     while iter < max_iter && step >= 0.3 #&& step_size < 1.0
 
-        l = ones(7)*800
-        # l[4:6] .= 10
-        q = ones(6)*1600
-        q[3] *= 10
+        l = ones(3)*400
+        q = [1.0, 1.0, 100.0, 0.0, 0.0, 100.0]*0
 
         Q = [1.0 0.0 0.0 0.0 0.0 0.0 
-             0.0 0.0 0.0 0.0 0.0 0.0 
-             0.0 0.0 0.0 0.0 0.0 0.0
-             0.0 0.0 0.0 0.0 0.0 0.0 
+             0.0 1.0 0.0 0.0 0.0 0.0 
+             0.0 0.0 1.0 0.0 0.0 0.0
+             0.0 0.0 0.0 1.0 0.0 0.0 
              0.0 0.0 0.0 0.0 1.0 0.0 
-             0.0 0.0 0.0 0.0 0.0 0.0]*0.0
-        R = zeros(nu, nu)
+             0.0 0.0 0.0 0.0 0.0 1.0]*0
+        R = [4.0 0.0 0.0; 0.0 4.0 0.0; 0.0 0.0 1.0]*0
 
         ts_c, xs_c, us_c = solve_QP(As, Bs, Q, R, Cf, x0, u0, xf, ts[end], xs_hist[:,:,iter-1]', us_hist[:,:,iter-1]', xdots_hist[:,:,iter-1]'; lambda = l, q=q, u_lims = u_lims, x_lims = x_lims, Cx = Cx, x_scaling=x_scaling, u_scaling=u_scaling, g_scaling=g_scaling, o_scaling=o_scaling)
         # ts_c, xs_c, us_c = solve_QP(As, Bs, R, Cf, x0, u0, xf, ts[end], xs_hist[:,:,iter-1]', us_hist[:,:,iter-1]', xdots_hist[:,:,iter-1]'; lambda = l, u_lims = u_lims, x_scaling=ones(7), u_scaling=ones(3), g_scaling=ones(7), o_scaling=1.0)
@@ -526,8 +316,8 @@ function collocation(model, sim, A0, B0, Cf, x0, u0, xf, ts;
         # pu[3,:] *= 180.2
 
 
-        f_relax = (u_relax - l_relax)*exp(-0.2*(iter-1)) + l_relax
-        # f_relax = 0.01
+        # f_relax = (u_relax - l_relax)*exp(-0.2*(iter-1)) + l_relax
+        f_relax = 0.01
 
 
         if verbose @show iter, step, f_relax end
@@ -541,25 +331,23 @@ function collocation(model, sim, A0, B0, Cf, x0, u0, xf, ts;
         xs_step = xs_hist[:,:,iter-1] + f_relax*px
         us_step = us_hist[:,:,iter-1] + f_relax*pu
 
-        
         if iter < 3 && xs_0 !== nothing
-            xs_step = [xs_0[:,1] xs_0]
+            xs_step = xs_0
             us_step = us_0
             # px_d1 = zeros(size(xs_hist[:,:,1]))
             # pu_d1 = zeros(size(us_hist[:,:,1]))
         end
 
+        p1 = plot(xs_step[4,:], xs_step[5,:], xlabel = "X (m)", ylabel = "Y (m)", label = false)
+        p2 = plot(ts_c, us_step[1,:], xlabel = "Time (s)", ylabel = "Control Inputs", label = "Front", legend = :outertopright)
+        plot!(ts_c, us_step[2,:], label = "Back")
+        plot!(ts_c, us_step[3,:], label = "Pusher")
 
-        # p1 = plot(xs_step[4,:], xs_step[5,:], xlabel = "X (m)", ylabel = "Y (m)", label = false)
-        # p2 = plot(ts_c, us_step[1,:], xlabel = "Time (s)", ylabel = "Control Inputs", label = "Front", legend = :outertopright)
-        # plot!(ts_c, us_step[2,:], label = "Back")
-        # plot!(ts_c, us_step[3,:], label = "Pusher")
+        p3 = plot(ts_c, xs_step[6,2:end], xlabel = "Time (s)", ylabel = "Pitch (deg)", label = false)
 
-        # p3 = plot(ts_c, xs_step[6,2:end], xlabel = "Time (s)", ylabel = "Pitch (deg)", label = false)
+        p_step = plot(p1,p2,p3, layout = [1; 2])
 
-        # p_step = plot(p1,p2,p3, layout = [1; 2])
-
-        # display(p_step)
+        display(p_step)
 
         xs_hist[:,:,iter] = xs_step
         us_hist[:,:,iter] = us_step
@@ -582,10 +370,7 @@ function collocation(model, sim, A0, B0, Cf, x0, u0, xf, ts;
         end
         close(f)
 
-        angle = (t->[0.0, FM.linear(ts, us_step[4,:]*model.u_scaling[4], t*ts[end]), 0.0]*180/pi,
-                 t->[0.0, FM.linear(ts, us_step[5,:]*model.u_scaling[5], t*ts[end]), 0.0]*180/pi, 
-                 t->[0.0, FM.linear(ts, us_step[6,:]*model.u_scaling[6], t*ts[end]), 0.0]*180/pi,
-                 t->[0.0, FM.linear(ts, us_step[7,:]*model.u_scaling[7], t*ts[end]), 0.0]*180/pi)
+        angle = ()
         RPM = (t->FM.linear(ts, us_step[1,:]*model.u_scaling[1], t*ts[end])*30/pi, 
                t->FM.linear(ts, us_step[2,:]*model.u_scaling[2], t*ts[end])*30/pi, 
                t->FM.linear(ts, us_step[3,:]*model.u_scaling[3], t*ts[end])*30/pi)
@@ -593,8 +378,6 @@ function collocation(model, sim, A0, B0, Cf, x0, u0, xf, ts;
         v_vehicle = t->[-FM.linear(ts, xs_step[1,1:end-1]*model.x_scaling[1], t*ts[end])
                         0.0
                         FM.linear(ts, xs_step[2,1:end-1]*model.x_scaling[2], t*ts[end])]
-
-        @show v_vehicle(ts[1])
 
         angle_vehicle = t->[0.0
                             FM.linear(ts, xs_step[6,1:end-1]*model.x_scaling[6], t*ts[end])
@@ -612,7 +395,7 @@ function collocation(model, sim, A0, B0, Cf, x0, u0, xf, ts;
         sim.nt = -1
         sim.t = 0.0
 
-        sim.vehicle, _, _, _ = generate_joby_vehicle(Float64)
+        sim.vehicle, _, _, _ = generate_uli_vehicle(Float64)
 
         min_gamma = 0.001
         max_gamma = 2.5
@@ -626,28 +409,8 @@ function collocation(model, sim, A0, B0, Cf, x0, u0, xf, ts;
         # wake_treatment_box = uns.remove_particles_box([-1.0, -3.0, -0.7], [3.0, 3.0, 0.7], 1)
         wake_treatment_box = uns.remove_particles_box([-4.0, -10.0, -2.0], [6.5, 10.0, 2.0], 1)
 
-        RPM_ref = RPM[1](0)
-        n = RPM_ref/2/pi
-        D = 2*1.016
-        J_ref = 0.01/n/D
-        rho_ref = 1.225
-
-        rotors = [sim.vehicle.rotor_systems[1]; sim.vehicle.rotor_systems[2]; sim.vehicle.rotor_systems[3]] 
-                  
-        monitor_rotors = generate_monitor_rotors_2(rotors, J_ref, rho_ref, RPM_ref, n_steps_vpm, save_path=save_path, run_name="rotors")
-
-        b_ref = 5.486*2
-        ar_ref = b_ref/1.615
-        
-        Vinf=(x,t)->0.0001*[1.0, 0.0, 0.0]*exp(-100*t)
-
-        qinf_ref = rho_ref * 0.0001^2 / 2
-
-        monitor_surfaces = generate_monitor_wing_2(sim.vehicle.vlm_system, Vinf, b_ref, ar_ref, rho_ref, qinf_ref, n_steps_vpm, save_path=save_path, run_name="wings")
-
         # extra_runtime_function = uns.concatenate(wake_treatment_box, wake_treatment_strength, wake_treatment_sigma, model)
-        # extra_runtime_function = uns.concatenate(wake_treatment_box, wake_treatment_strength, model, monitor_rotors, monitor_surfaces)
-        extra_runtime_function = uns.concatenate(wake_treatment_box, wake_treatment_strength, model) 
+        extra_runtime_function = uns.concatenate(wake_treatment_box, wake_treatment_strength, model)
 
         # extra_runtime_function(args...; optargs...) = wake_treatment(args...; optargs...)||model(args...; optargs...)
 
@@ -656,12 +419,13 @@ function collocation(model, sim, A0, B0, Cf, x0, u0, xf, ts;
 
         Oaxis = [cosd(-x0_unscaled[6]) 0.0 sind(-x0_unscaled[6]); 0.0 1.0 0.0; -sind(-x0_unscaled[6]) 0.0 cosd(-x0_unscaled[6])]
 
+
         uns.vlm.setcoordsystem(sim.vehicle.system, sim.vehicle.system.O, Oaxis)
 
         model.i .= 1
 
         uns.run_simulation(sim, n_steps_vpm;
-                        Vinf=Vinf,
+                        Vinf=(x,t)->0*[5.0, 0.0, -5.0]*exp(-100*t),
                         rho=rho, mu=mu,
                         # ----- SOLVERS OPTIONS ----------------
                         p_per_step=p_per_step,
@@ -705,17 +469,6 @@ function collocation(model, sim, A0, B0, Cf, x0, u0, xf, ts;
             print(f, "\n")
         end
         close(f)
-        f = open(B_file, "a")
-        for i in eachindex(Bs_sparse[:,1,1])
-            for j in eachindex(Bs_sparse[1,:,1])
-                for it in eachindex(Bs_sparse[1,1,:])
-                    print(f, Bs_sparse[i,j,it], " ")
-                end
-                print(f, "\n")
-            end
-            print(f, "\n")
-        end
-        close(f)
         f = open(x_dot_file, "a")
         for i in eachindex(xdots_sparse[:,1])
             for it in eachindex(xdots_sparse[1,:])
@@ -725,7 +478,6 @@ function collocation(model, sim, A0, B0, Cf, x0, u0, xf, ts;
         end
         close(f)
         
-        stop
 
         As_d1 = beta*As_d1 + (1-beta)*As_sparse
         Bs_d1 = beta*Bs_d1 + (1-beta)*Bs_sparse
@@ -734,7 +486,6 @@ function collocation(model, sim, A0, B0, Cf, x0, u0, xf, ts;
         As_sparse = As_d1/(1-beta^(iter-1))
         Bs_sparse = Bs_d1/(1-beta^(iter-1))
         xdots_sparse = xdots_d1/(1-beta^(iter-1))
-
 
 
 
@@ -759,17 +510,21 @@ function collocation(model, sim, A0, B0, Cf, x0, u0, xf, ts;
 
         ts_fine = range(ts_sparse[1], ts_sparse[end], length(ts))
 
-        As = interpolate_matrix(ts_sparse, As_sparse, ts_fine, As, 4)
-        Bs = interpolate_matrix(ts_sparse, Bs_sparse, ts_fine, Bs, 4)
-        xdots_hist[:,:,iter] = interpolate_xdots(ts_sparse, xdots_sparse, ts, xdots, 6)
+        As = interpolate_matrix(ts_sparse, As_sparse, ts_fine, As, 5)
+        Bs = interpolate_matrix(ts_sparse, Bs_sparse, ts_fine, Bs, 5)
+        xdots_hist[:,:,iter] = interpolate_xdots(ts_sparse, xdots_sparse, ts, xdots, 5)
 
         As[:,4:5] .= 0.0
+
+
 
         iter += 1
         step_d1 = deepcopy(step)
     end
     return xs_hist[:,:,1:iter-1], us_hist[:,:,1:iter-1], xdots_hist[:,:,1:iter-1]
 end
+
+
 
 
 
@@ -789,9 +544,8 @@ function solve_QP(As, Bs, Q, R, Cf, x0, u0, xf, tf, x_0, u_0, xdot_0;
     nt = Int(length(As[:,1])/nx)
     nx_bar = nt*nx; nu_bar = nu*nt
     dt = tf/(nt-1)
-
     Q, H, q, l, u = generate_matrices(As, Bs, Q, R, Cf, x0, u0, xf, nx, nu, nx_bar, nu_bar, dt, nt, x_0, u_0, xdot_0, lambda, q, u_lims, x_lims, Cx)
-        
+
     # sol = OP_osqp(Qs, Hs, qs, ls, us)
     sol = OP_osqp(Q, H, q, l, u)
 
@@ -882,12 +636,10 @@ function equality_constraint_matrix(As, Bs, Cf, nx, nu, nx_bar, nu_bar, dt)
 end
 
 function generate_matrices(As, Bs, Q, R, Cf, x0, u0, xf, nx, nu, nx_bar, nu_bar, dt, nt, x_0, u_0, xdot_0, lambda, q, u_lims, x_lims, Cx)
-    
     Q = cost_matrix(Q, R, nx, nu, nx_bar, nu_bar, nt, dt, lambda, q)
     H = equality_constraint_matrix(As, Bs, Cf, nx, nu, nx_bar, nu_bar, dt)
     q = zeros(eltype(dt), nx_bar+nu_bar)
     b = zeros(eltype(dt), nx_bar)
-
     j = 1
     for i in 1:nx:nx_bar
         b[i:i+nx-1] = xdot_0[j,:]*dt - As[i:i+nx-1,:]*dt*x_0[j,:] - Bs[i:i+nx-1,:]*dt*u_0[j,:]
@@ -895,7 +647,6 @@ function generate_matrices(As, Bs, Q, R, Cf, x0, u0, xf, nx, nu, nx_bar, nu_bar,
     end
     b[1:nx] += (As[1:nx,:]*dt + LA.I)*x_0[1,:]
     b = vcat(b , -Cf*xf, zeros(3))
-
 
     H_ineq = [zeros(nu_bar, nx_bar) LA.I(nu_bar)]
     H = [H; H_ineq]
@@ -907,27 +658,20 @@ function generate_matrices(As, Bs, Q, R, Cf, x0, u0, xf, nx, nu, nx_bar, nu_bar,
         j += nx
     end
 
-
     H = [H; Cx_bar zeros(eltype(dt), length(Cx_bar[:,1]), nu_bar)]
 
 
     limits = zeros(length(b) + nu_bar + length(Cx_bar[:,1]), 2)
     limits[1:length(b),1] = -b; limits[1:length(b),2] = -b
 
-
     # limits[nx_bar + 5,:] = [8e-5, 10.0]
 
     for i in length(b)+1:nu:length(b)+nu_bar
         limits[i:i+nu-1,:] = u_lims
     end
-    # limits[length(b)+4:length(b)+6,:] .= 1.0
-    limits[length(b)+nu_bar-3:length(b)+nu_bar-1, :] .= 0.0
-
-
     for i in length(b)+nu_bar+1:length(Cx[:,1]):length(b)+nu_bar+length(Cx_bar[:,1])
         limits[i:i+length(Cx[:,1])-1,:] = x_lims
     end
-    limits[length(b)+nu_bar+length(Cx_bar[:,1])-6, :] .= 0.0
     
     return Q, H, q, limits[:,1], limits[:,2]
 end 

@@ -1,4 +1,5 @@
-import FLOWUnsteady as uns
+using FLOWUnsteady 
+uns = FLOWUnsteady
 
 function generate_joby_vehicle(T)
     mpft = 0.3048/2# general parameters

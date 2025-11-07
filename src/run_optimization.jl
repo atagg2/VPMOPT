@@ -1,48 +1,59 @@
-include("vehicle.jl")
-
+include("vehicle_mini.jl")
 include("vpm_model.jl")
 include("collocation.jl")
 
 import PreallocationTools as PT
 using DelimitedFiles
 
-x0 = zeros(6); x0[1] = 1e-4; x0[2] = 0.1
-u0 = [200.0, 200.0, 200.0, pi/2, pi/2, pi/2, 0.0]
+x0 = zeros(6); x0[1] = 1e-5; x0[6] = 0.0
+u0 = [80.58710033866438
+64.28626686863414
+100.0]
 
-x_scaling = [60.0, 10.0, 1.0, 300.0, 50.0, 5.0]
-u_scaling = [400.0, 400.0, 400.0, pi/2, pi/2, pi/2, 25*pi/180]
+
+x_scaling = [33.0, 3.5, 2.7, 247.9, 20.0, 1.2]
+u_scaling = [90.6, 76.7, 180.2]
+
+# x_scaling = ones(6)
+# u_scaling = ones(3)
+
 
 x0 ./= x_scaling
 u0 ./= u_scaling
+# u0 = [0.1, 0.1, 200.0]
 
 # define desired final state
-xf = [60.0, 0.0, 0.0, 300.0, 50.0, 3.0] ./ x_scaling
-Cf = [0.0 1.0 0.0 0.0 0.0 0.0]
+xf = [33.0, 0.0, 0.0, 0.0, 20.0, 1.2] ./ x_scaling
+Cf = [1.0 0.0 0.0 0.0 0.0 0.0
+      0.0 1.0 0.0 0.0 0.0 0.0
+      0.0 0.0 1.0 0.0 0.0 0.0
+      0.0 0.0 0.0 0.0 1.0 0.0
+      0.0 0.0 0.0 0.0 0.0 1.0]
+
+R = [1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0]
 
 nx = length(x0)
 nu = length(u0)
-nt = 400
-tf = 7.5
+nt = 500
+tf = 10.0
 ts = range(0.0, tf, nt)
 dt = ts[2] - ts[1]
-
-R = zeros(nu, nu)
 
 # create vpm simulation
 Vref = 1.0
 RPMref = 1.0
-vehicle, r_rotors, dir_rotors, r_surfs = generate_joby_vehicle(Float64);
+vehicle, r_rotors, dir_rotors, r_surfs = generate_uli_vehicle(Float64);
 v_vehicle(t) = zeros(3)                      
 angle_vehicle(t) = zeros(3)                  
-angle = ((t)->0.0, (t)->0.0, (t)->0.0, (t)->0.0)                                  
+angle = ()                                  
 RPM = ((t)->0.0, (t)->0.0, (t)->0.0) 
 maneuver = uns.KinematicManeuver(angle, RPM, v_vehicle, angle_vehicle)
 sim = uns.Simulation(vehicle, maneuver, Vref, RPMref, tf);
 
 
-m = 1000.0  #confirm
-I = 4000.0  #confirm
-cog = [0.8075, 0.0, 0.0]
+m = 200.0  #confirm
+I = 500.0   #confirm
+cog = [0.0, 0.0, 0.0]   #confirm
 rho = 1.225
 mu = 1.81e-5
 g = 9.81# wing
@@ -52,10 +63,10 @@ dt_vpm = 0.003 #30/(4*5400)
 n_steps_vpm = Int(round(tf/dt_vpm))
 
 
-nl = n_steps_vpm#15#Int(round(n_steps_vpm/300))
-ns = 1
+nl = Int(round(n_steps_vpm/300))
+ns = 15
 
-t_rng = collect(range(dt_vpm*100, tf-dt_vpm*ns, nl))
+t_rng = collect(range(dt_vpm*10, tf-dt_vpm*ns, nl))
 
 k = 1
 t_sparse = zeros(nl*ns)
@@ -71,25 +82,26 @@ A = zeros(nx, nx, nl*ns)
 B = zeros(nx, nu, nl*ns)
 x_dots = zeros(nx, nl*ns)
 
-A0 = [-0.000465696   0.016747  -0.0048591  -0.0  -0.0  -0.228573
--0.471775     -0.258286   0.0196457   0.0   0.0   0.067471
- 2.01242      -0.406216  -0.188692    0.0   0.0   0.699355
- 0.2           0.0        0.0         0.0   0.0   0.0
- 0.0           0.2        0.0         0.0   0.0   0.0
- 0.0           0.0        1.0         0.0   0.0   0.0]
+A0 = [-3.28141e-11  -2.09263e-9   -1.15879e-12  -0.0  -0.0  -0.171217 
+2.65775e-9   -0.00694101    7.68805e-10   0.0   0.0   0.0136669     
+-8.46226e-11  -0.000628293  -1.31418e-10   0.0   0.0   1.09658e-11  
+1.0           0.0           0.0           0.0   0.0   0.0          
+0.0           1.0           0.0           0.0   0.0   0.0           
+0.0           0.0           1.0           0.0   0.0   0.0]
 
-B0 = [0.0184839  0.0181258    0.0180737  -0.115951  -0.113708   -0.111225   -0.0
-2.35147    2.30591      2.29928     0.032812   0.0321773   0.0314746   0.0
-11.3098     5.84273    -13.8255      0.661582   0.276405    1.32398     0.0
-0.0        0.0          0.0         0.0        0.0         0.0         0.0
-0.0        0.0          0.0         0.0        0.0         0.0         0.0
-0.0        0.0          0.0         0.0        0.0         0.0         0.0]
+B0 = [-0.0        -0.0         0.0156611
+0.0961976   0.0762956   0.0
+0.0102949  -0.0123433  -0.000380198
+0.0         0.0         0.0
+0.0         0.0         0.0
+0.0         0.0         0.0]
+
 
 omega_ref = 100.0
 RPM_ref = omega_ref*30/pi 
 
 R = 1.524/4
-b = 10.97/4
+b = 7.7*2/4
 
 p_per_step      = 3                         # Sheds per time step
 shed_starting   = false                     # Whether to shed starting vortex
@@ -155,10 +167,10 @@ sigmfactor_vpm = 1.0
 
 data_cache = PT.GeneralLazyBufferCache((s)->begin
         T = eltype(s)
-        vehicle, _, _, _ = generate_joby_vehicle(T)
+        vehicle, _, _, _ = generate_uli_vehicle(T)
         v_vehicle(t) = zeros(T, 3)                      
         angle_vehicle(t) = zeros(T, 3)                  
-        angle = ((t)->zero(T), (t)->zero(T), (t)->zero(T), (t)->zero(T))                                   
+        angle = ()                                  
         RPM = ((t)->zero(T), (t)->zero(T), (t)->zero(T)) 
         maneuver = uns.KinematicManeuver(angle, RPM, v_vehicle, angle_vehicle)
         sim = uns.Simulation(vehicle, maneuver, one(T), one(T), tf*one(T))
@@ -207,14 +219,10 @@ model = VPMModel(sim, pfield, data_cache, dt_vpm, m, I, g, rho, cog,
                     sigmafactor_vpm, sigma_vpm_overwrite, omit_shedding, x_scaling, u_scaling);
 
 
-xs_0 = zeros(nx, nt)
-us_0 = zeros(nu, nt)
+# xs_0 = zeros(nx, nt+1)
+# us_0 = zeros(nu, nt)
 
-# xs_0[1,:] = (xf[1] - x0[1])/tf * ts#range(x0[1], xf[1], nt)
-# xs_0[2,:] = (xf[5]*x_scaling[5] - x0[5]*x_scaling[5])*2/tf^2/x_scaling[2] * ts
-# xs_0[4,:] = (xf[1]*x_scaling[1] - x0[1]*x_scaling[1])/2/tf * ts .^2 / x_scaling[4]#range(x0[4], xf[4], nt)
-# xs_0[6,:] = (xf[6] - x0[6])/tf * ts
-# xs_0[5,:] = (xf[5] - x0[5])/tf^2 * ts .^2 #range(x0[4], xf[5], nt)
+# xs_0[1,:] = range(x0[1], xf[1], nt+1)
 # xs_0[6,2:end] = xf[6] ./(1 .+ exp.(-2*(ts .- ts[end]/2)/2))
 # xs_0[6,2:end] .-= xs_0[6,2] 
 # xs_0[5,2:end] = xf[5] ./(1 .+ exp.(-2*(ts .- ts[end]/2)/2))
@@ -224,30 +232,12 @@ us_0 = zeros(nu, nt)
 #     xs_0[3,i] = (xs_0[6,i] - xs_0[6,i-1])/(ts[2]-ts[1])
 # end
 # xs_0[2,2] = xs_0[2,3]/2
-# us_0[1,:] = range(u0[1], u0[1], nt)
-# us_0[2,:] = range(u0[2], u0[2], nt)
-# us_0[3,:] = range(u0[3], u0[3], nt)
+# us_0[1,:] = range(u0[1], u0[1]*0.5, nt)
+# us_0[2,:] = range(u0[2], 11.0, nt)
+# us_0[3,:] = range(u0[3], u0[3]*1.5, nt)
 
-# us_0[4,:] = range(u0[4], 0.0, nt)
-# us_0[5,:] = range(u0[5], 0.0, nt)
-# us_0[6,:] = range(u0[6], 0.0, nt)
-# us_0[7,:] = range(0.0, -1.0*pi/180 / u_scaling[7], nt)
-
-
-
-xs_0 = Float64.(readdlm("xs_transition.txt", ' ')[1:6,2:end-1])
-us_0 = Float64.(readdlm("us_transition.txt", ' ')[:,1:end-1])
-
-
-# us_0[1:3,:] .= 100
-# us_0[4:6,:] .= 0.0
-
-# xs_0[1,:] .= 50.0
-# xs_0[6,:] .= 1.0
-
-xs_0 ./= x_scaling
-us_0 ./= u_scaling
-
+xs_0 = Float64.(readdlm("xs_0.txt", ' ')[1:6,1:end-1])
+us_0 = Float64.(readdlm("us_0.txt", ' ')[:,1:end-1])
 
 
 # x_scale = [33.0, 3.5, 2.7, 247.9, 20.0, 1.2]
@@ -261,17 +251,16 @@ us_0 ./= u_scaling
 #     us_0[:,i] .*= u_scale
 # end
 
-u_lims = [0.0 600.0; 0.0 600.0; 0.0 600.0; 0.0 pi/2; 0.0 pi/2; 0.0 pi/2; -0.5 0.5] ./ u_scaling
 
-run_name = "derivative_regression"
 
-save_path = "runs/"*run_name*"/"
+
+run_name = "example_5_10_25"
+save_path = nothing#"runs/"*run_name*"/"
                     
 xs_hist, us_hist, xdots_hist = collocation(model, sim, A0, B0, Cf, x0, u0, xf, ts;
                                             xs_0 = xs_0,
                                             us_0 = us_0,
                                             na = nl,
-                                            u_lims=u_lims,
                                             n_steps_vpm=n_steps_vpm,
                                             p_per_step=p_per_step,
                                             max_particles=Int(1e7),
@@ -288,5 +277,6 @@ xs_hist, us_hist, xdots_hist = collocation(model, sim, A0, B0, Cf, x0, u0, xf, t
                                             shed_starting=shed_starting,
                                             shed_unsteady=shed_unsteady,
                                             unsteady_shedcrit=unsteady_shedcrit,
+                                            vpm_SFS=vpm_SFS,
                                             run_name=run_name,
                                             save_path=save_path)
