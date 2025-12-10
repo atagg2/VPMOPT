@@ -17,7 +17,10 @@ u0 ./= u_scaling
 
 # define desired final state
 xf = [60.0, 0.0, 0.0, 300.0, 50.0, 3.0] ./ x_scaling
-Cf = [0.0 1.0 0.0 0.0 0.0 0.0]
+Cf = [1.0 0.0 0.0 0.0 0.0 0.0
+      0.0 1.0 0.0 0.0 0.0 0.0
+      0.0 0.0 1.0 0.0 0.0 0.0
+      0.0 0.0 0.0 0.0 1.0 0.0]
 
 nx = length(x0)
 nu = length(u0)
@@ -39,7 +42,6 @@ RPM = ((t)->0.0, (t)->0.0, (t)->0.0)
 maneuver = uns.KinematicManeuver(angle, RPM, v_vehicle, angle_vehicle)
 sim = uns.Simulation(vehicle, maneuver, Vref, RPMref, tf);
 
-
 m = 1000.0  #confirm
 I = 4000.0  #confirm
 cog = [0.8075, 0.0, 0.0]
@@ -52,7 +54,7 @@ dt_vpm = 0.003 #30/(4*5400)
 n_steps_vpm = Int(round(tf/dt_vpm))
 
 
-nl = n_steps_vpm#15#Int(round(n_steps_vpm/300))
+nl = 15#Int(round(n_steps_vpm/300))
 ns = 1
 
 t_rng = collect(range(dt_vpm*100, tf-dt_vpm*ns, nl))
@@ -72,18 +74,18 @@ B = zeros(nx, nu, nl*ns)
 x_dots = zeros(nx, nl*ns)
 
 A0 = [-0.000465696   0.016747  -0.0048591  -0.0  -0.0  -0.228573
--0.471775     -0.258286   0.0196457   0.0   0.0   0.067471
- 2.01242      -0.406216  -0.188692    0.0   0.0   0.699355
- 0.2           0.0        0.0         0.0   0.0   0.0
- 0.0           0.2        0.0         0.0   0.0   0.0
- 0.0           0.0        1.0         0.0   0.0   0.0]
+      -0.471775     -0.258286   0.0196457   0.0   0.0   0.067471
+      2.01242      -0.406216  -0.188692    0.0   0.0   0.699355
+      0.2           0.0        0.0         0.0   0.0   0.0
+      0.0           0.2        0.0         0.0   0.0   0.0
+      0.0           0.0        1.0         0.0   0.0   0.0]
 
 B0 = [0.0184839  0.0181258    0.0180737  -0.115951  -0.113708   -0.111225   -0.0
-2.35147    2.30591      2.29928     0.032812   0.0321773   0.0314746   0.0
-11.3098     5.84273    -13.8255      0.661582   0.276405    1.32398     0.0
-0.0        0.0          0.0         0.0        0.0         0.0         0.0
-0.0        0.0          0.0         0.0        0.0         0.0         0.0
-0.0        0.0          0.0         0.0        0.0         0.0         0.0]
+      2.35147    2.30591      2.29928     0.032812   0.0321773   0.0314746   0.0
+      11.3098     5.84273    -13.8255      0.661582   0.276405    1.32398     0.0
+      0.0        0.0          0.0         0.0        0.0         0.0         0.0
+      0.0        0.0          0.0         0.0        0.0         0.0         0.0
+      0.0        0.0          0.0         0.0        0.0         0.0         0.0]
 
 omega_ref = 100.0
 RPM_ref = omega_ref*30/pi 
@@ -95,16 +97,16 @@ p_per_step      = 3                         # Sheds per time step
 shed_starting   = false                     # Whether to shed starting vortex
 shed_unsteady   = true                      # Whether to shed vorticity from unsteady loading
 unsteady_shedcrit = 0.001                   # Shed unsteady loading whenever circulation
-                                            #  fluctuates by more than this ratio
+#  fluctuates by more than this ratio
 
 # Regularization of embedded vorticity
 sigma_vlm_surf  = b/400                     # VLM-on-VPM smoothing radius
 sigma_rotor_surf= R/20                      # Rotor-on-VPM smoothing radius
 lambda_vpm      = 2.125                     # VPM core overlap
-                                            # VPM smoothing radius
+# VPM smoothing radius
 sigma_vpm_overwrite         = lambda_vpm * (2*pi*RPM_ref/60*R + xf[1])*dt_vpm / p_per_step
 sigmafactor_vpmonvlm        = 1.0             # Shrink particles by this factor when
-                                            #  calculating VPM-on-VLM/Rotor induced velocities
+#  calculating VPM-on-VLM/Rotor induced velocities
 sigmafactor_vpm = 1.0
 
 # Rotor solver
@@ -118,7 +120,7 @@ vlm_vortexsheet_overlap     = 2.125         # Overlap of the particles that make
 vlm_vortexsheet_distribution= uns.g_pressure# Distribution of the vortex sheet
 # vlm_vortexsheet_sigma_tbv = thickness*chord / 100  # Size of particles in trailing bound vortices
 vlm_vortexsheet_sigma_tbv   = sigma_vpm_overwrite
-                                            # How many particles to preallocate for the vortex sheet
+# How many particles to preallocate for the vortex sheet
 
 
 # Wing solver: force calculation
@@ -147,64 +149,64 @@ vpm_SFS       = vpm.SFS_none              # VPM LES subfilter-scale model
 #                                   clippings=[vpm.clipping_backscatter],
 #                                   controls=[vpm.control_directional, vpm.control_magnitude])
 
-                                            
+
 
 omit_shedding = []
 sigmfactor_vpm = 1.0
 
 
 data_cache = PT.GeneralLazyBufferCache((s)->begin
-        T = eltype(s)
-        vehicle, _, _, _ = generate_joby_vehicle(T)
-        v_vehicle(t) = zeros(T, 3)                      
-        angle_vehicle(t) = zeros(T, 3)                  
-        angle = ((t)->zero(T), (t)->zero(T), (t)->zero(T), (t)->zero(T))                                   
-        RPM = ((t)->zero(T), (t)->zero(T), (t)->zero(T)) 
-        maneuver = uns.KinematicManeuver(angle, RPM, v_vehicle, angle_vehicle)
-        sim = uns.Simulation(vehicle, maneuver, one(T), one(T), tf*one(T))
-    
-        max_particles = Int(1e5)
-        vpm_solver = [
-                            (:formulation, vpm.rVPM),
-                            (:viscous, vpm.Inviscid()),
-                            (:kernel, vpm.gaussianerf),
-                            (:UJ, vpm.UJ_fmm),
-                            (:SFS, vpm.SFS_none),
-                            (:integration, vpm.rungekutta3),
-                            (:transposed, true),
-                            (:relaxation, vpm.pedrizzetti),
-                            (:fmm, vpm.FMM(; p=4, ncrit=50, theta=0.4, nonzero_sigma=false)),
-                        ]
-    
-        pfield = uns.vpm.ParticleField(max_particles, T;  Uinf=t->zeros(T, 3), vpm_solver...)
-    
-        max_staticp = 4*uns._get_m_static(vehicle)
-        staticpfield = vpm.ParticleField(max_staticp, T; Uinf=t->[T(1e-5), 0.0, 0.0],
-                                                                        vpm_solver...)
-    
-    
-        static_particles_function = uns.generate_static_particle_fun(pfield, staticpfield,
-                                                                    sim.vehicle, sigma_vlm_surf, sigma_rotor_surf;
-                                                                    vlm_vortexsheet=vlm_vortexsheet,
-                                                                    vlm_vortexsheet_overlap=vlm_vortexsheet_overlap,
-                                                                    vlm_vortexsheet_distribution=vlm_vortexsheet_distribution,
-                                                                    vlm_vortexsheet_sigma_tbv=vlm_vortexsheet_sigma_tbv,
-                                                                    save_path=nothing,
-                                                                    run_name=nothing, nsteps_save=0)
-    
-    
-    
-        return sim, pfield, staticpfield, static_particles_function
-    end)
-                                        
+                                           T = eltype(s)
+                                           vehicle, _, _, _ = generate_joby_vehicle(T)
+                                           v_vehicle(t) = zeros(T, 3)                      
+                                           angle_vehicle(t) = zeros(T, 3)                  
+                                           angle = ((t)->zero(T), (t)->zero(T), (t)->zero(T), (t)->zero(T))                                   
+                                           RPM = ((t)->zero(T), (t)->zero(T), (t)->zero(T)) 
+                                           maneuver = uns.KinematicManeuver(angle, RPM, v_vehicle, angle_vehicle)
+                                           sim = uns.Simulation(vehicle, maneuver, one(T), one(T), tf*one(T))
+
+                                           max_particles = Int(1e5)
+                                           vpm_solver = [
+                                                         (:formulation, vpm.rVPM),
+                                                         (:viscous, vpm.Inviscid()),
+                                                         (:kernel, vpm.gaussianerf),
+                                                         (:UJ, vpm.UJ_fmm),
+                                                         (:SFS, vpm.SFS_none),
+                                                         (:integration, vpm.rungekutta3),
+                                                         (:transposed, true),
+                                                         (:relaxation, vpm.pedrizzetti),
+                                                         (:fmm, vpm.FMM(; p=4, ncrit=50, theta=0.4, nonzero_sigma=false)),
+                                                        ]
+
+                                           pfield = uns.vpm.ParticleField(max_particles, T;  Uinf=t->zeros(T, 3), vpm_solver...)
+
+                                           max_staticp = 4*uns._get_m_static(vehicle)
+                                           staticpfield = vpm.ParticleField(max_staticp, T; Uinf=t->[T(1e-5), 0.0, 0.0],
+                                                                            vpm_solver...)
+
+
+                                           static_particles_function = uns.generate_static_particle_fun(pfield, staticpfield,
+                                                                                                        sim.vehicle, sigma_vlm_surf, sigma_rotor_surf;
+                                                                                                        vlm_vortexsheet=vlm_vortexsheet,
+                                                                                                        vlm_vortexsheet_overlap=vlm_vortexsheet_overlap,
+                                                                                                        vlm_vortexsheet_distribution=vlm_vortexsheet_distribution,
+                                                                                                        vlm_vortexsheet_sigma_tbv=vlm_vortexsheet_sigma_tbv,
+                                                                                                        save_path=nothing,
+                                                                                                        run_name=nothing, nsteps_save=0)
+
+
+
+                                           return sim, pfield, staticpfield, static_particles_function
+                                       end)
+
 
 sim, pfield, staticpfield, static_particles_function = data_cache[1.0];
 
 
 model = VPMModel(sim, pfield, data_cache, dt_vpm, m, I, g, rho, cog, 
-                    collect(r_rotors), dir_rotors, r_surfs, A, B, x_dots, [1], t_sparse, 
-                    vlm_rlx, sigma_vlm_surf, sigma_rotor_surf, hubtiploss_correction, vlm_init, sigmafactor_vpmonvlm, 
-                    sigmafactor_vpm, sigma_vpm_overwrite, omit_shedding, x_scaling, u_scaling);
+                 collect(r_rotors), dir_rotors, r_surfs, A, B, x_dots, [1], t_sparse, 
+                 vlm_rlx, sigma_vlm_surf, sigma_rotor_surf, hubtiploss_correction, vlm_init, sigmafactor_vpmonvlm, 
+                 sigmafactor_vpm, sigma_vpm_overwrite, omit_shedding, x_scaling, u_scaling);
 
 
 xs_0 = zeros(nx, nt)
@@ -235,8 +237,8 @@ us_0 = zeros(nu, nt)
 
 
 
-xs_0 = Float64.(readdlm("xs_transition.txt", ' ')[1:6,2:end-1])
-us_0 = Float64.(readdlm("us_transition.txt", ' ')[:,1:end-1])
+xs_0 = Float64.(readdlm("xs_0_2.txt", ' ')[1:6,2:end-1])
+us_0 = Float64.(readdlm("us_0_2.txt", ' ')[:,1:end-1])
 
 
 # us_0[1:3,:] .= 100
@@ -263,10 +265,10 @@ us_0 ./= u_scaling
 
 u_lims = [0.0 600.0; 0.0 600.0; 0.0 600.0; 0.0 pi/2; 0.0 pi/2; 0.0 pi/2; -0.5 0.5] ./ u_scaling
 
-run_name = "derivative_regression"
+run_name = "_12_10_25" 
 
 save_path = "runs/"*run_name*"/"
-                    
+
 xs_hist, us_hist, xdots_hist = collocation(model, sim, A0, B0, Cf, x0, u0, xf, ts;
                                             xs_0 = xs_0,
                                             us_0 = us_0,

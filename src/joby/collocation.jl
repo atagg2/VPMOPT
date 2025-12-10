@@ -6,7 +6,7 @@ using OSQP
 using SparseArrays
 using FLOWUnsteady
 
-file = "derivative_regression.txt"
+file = "_12_10_25.txt"
 
 A_file = "A"*file
 B_file = "B"*file
@@ -39,6 +39,9 @@ function interpolate_matrix(ts, As, ts_fine, As_fine, order;
             As_r[i,j,:] = psi * w
         end
     end
+
+    
+#    As_r = deepcopy(As)
 
     A_spline = (t)->begin
         for i in eachindex(A[:,1])
@@ -77,6 +80,8 @@ function interpolate_xdots(ts, xdots, ts_fine, xdots_fine, order)
         w = (psi' * psi) \ psi' * xdots[i,:]
         xdots_r[i,:] = psi * w
     end
+
+#    xdots_r = deepcopy(xdots)
 
     xdot = zeros(nx)
     xdot_spline = (t)->begin
@@ -471,9 +476,24 @@ function collocation(model, sim, A0, B0, Cf, x0, u0, xf, ts;
              0.0 0.0 0.0 0.0 0.0 0.0 
              0.0 0.0 0.0 0.0 1.0 0.0 
              0.0 0.0 0.0 0.0 0.0 0.0]*0.0
-        R = zeros(nu, nu)
 
-        ts_c, xs_c, us_c = solve_QP(As, Bs, Q, R, Cf, x0, u0, xf, ts[end], xs_hist[:,:,iter-1]', us_hist[:,:,iter-1]', xdots_hist[:,:,iter-1]'; lambda = l, q=q, u_lims = u_lims, x_lims = x_lims, Cx = Cx, x_scaling=x_scaling, u_scaling=u_scaling, g_scaling=g_scaling, o_scaling=o_scaling)
+        R = [1.0 0.0 0.0 0.0 0.0 0.0 0.0 
+             0.0 1.0 0.0 0.0 0.0 0.0 0.0
+             0.0 0.0 1.0 0.0 0.0 0.0 0.0
+             0.0 0.0 0.0 1.0 0.0 0.0 0.0
+             0.0 0.0 0.0 0.0 1.0 0.0 0.0
+             0.0 0.0 0.0 0.0 0.0 1.0 0.0
+             0.0 0.0 0.0 0.0 0.0 0.0 1.0]*0#zeros(nu, nu)
+
+        
+
+        miter = 100
+        xf0 = xs_0[:,end]
+        uf0 = us_0[4:6,1]
+        #(xf - xf0)/miter*iter + xf0
+        #(1.0 .- uf0)/miter*miter + uf0
+
+        ts_c, xs_c, us_c = solve_QP(As, Bs, Q, R, Cf, x0, u0, xf, ones(3), ts[end], xs_hist[:,:,iter-1]', us_hist[:,:,iter-1]', xdots_hist[:,:,iter-1]'; lambda = l, q=q, u_lims = u_lims, x_lims = x_lims, Cx = Cx, x_scaling=x_scaling, u_scaling=u_scaling, g_scaling=g_scaling, o_scaling=o_scaling)
         # ts_c, xs_c, us_c = solve_QP(As, Bs, R, Cf, x0, u0, xf, ts[end], xs_hist[:,:,iter-1]', us_hist[:,:,iter-1]', xdots_hist[:,:,iter-1]'; lambda = l, u_lims = u_lims, x_scaling=ones(7), u_scaling=ones(3), g_scaling=ones(7), o_scaling=1.0)
 
         px = xs_c .* x_scaling - xs_hist[:,:,iter-1]
@@ -725,7 +745,7 @@ function collocation(model, sim, A0, B0, Cf, x0, u0, xf, ts;
         end
         close(f)
         
-        stop
+        #stop
 
         As_d1 = beta*As_d1 + (1-beta)*As_sparse
         Bs_d1 = beta*Bs_d1 + (1-beta)*Bs_sparse
@@ -773,7 +793,7 @@ end
 
 
 
-function solve_QP(As, Bs, Q, R, Cf, x0, u0, xf, tf, x_0, u_0, xdot_0;
+function solve_QP(As, Bs, Q, R, Cf, x0, u0, xf, uf0, tf, x_0, u_0, xdot_0;
     lambda = 0.0,
     q = 0.0,
     u_lims = [-Inf*ones(length(u0)) Inf*ones(length(u0))],
@@ -790,7 +810,7 @@ function solve_QP(As, Bs, Q, R, Cf, x0, u0, xf, tf, x_0, u_0, xdot_0;
     nx_bar = nt*nx; nu_bar = nu*nt
     dt = tf/(nt-1)
 
-    Q, H, q, l, u = generate_matrices(As, Bs, Q, R, Cf, x0, u0, xf, nx, nu, nx_bar, nu_bar, dt, nt, x_0, u_0, xdot_0, lambda, q, u_lims, x_lims, Cx)
+    Q, H, q, l, u = generate_matrices(As, Bs, Q, R, Cf, x0, u0, xf, uf0, nx, nu, nx_bar, nu_bar, dt, nt, x_0, u_0, xdot_0, lambda, q, u_lims, x_lims, Cx)
         
     # sol = OP_osqp(Qs, Hs, qs, ls, us)
     sol = OP_osqp(Q, H, q, l, u)
@@ -805,7 +825,7 @@ function OP_osqp(Q, H, q, l, u)
     P = sparse(Q)
     A = sparse(H)
     prob = OSQP.Model()
-    OSQP.setup!(prob; P=P, q=q, A=A, l=l, u=u, alpha=1, max_iter=20000, eps_abs = 1e-4, eps_rel = 1e-4, scaling = true)
+    OSQP.setup!(prob; P=P, q=q, A=A, l=l, u=u, alpha=1, max_iter=100000, eps_abs = 1e-4, eps_rel = 1e-4, scaling = true)
     sol = OSQP.solve!(prob)
     return sol.x
 end
@@ -881,7 +901,7 @@ function equality_constraint_matrix(As, Bs, Cf, nx, nu, nx_bar, nu_bar, dt)
     return H
 end
 
-function generate_matrices(As, Bs, Q, R, Cf, x0, u0, xf, nx, nu, nx_bar, nu_bar, dt, nt, x_0, u_0, xdot_0, lambda, q, u_lims, x_lims, Cx)
+function generate_matrices(As, Bs, Q, R, Cf, x0, u0, xf, uf0, nx, nu, nx_bar, nu_bar, dt, nt, x_0, u_0, xdot_0, lambda, q, u_lims, x_lims, Cx)
     
     Q = cost_matrix(Q, R, nx, nu, nx_bar, nu_bar, nt, dt, lambda, q)
     H = equality_constraint_matrix(As, Bs, Cf, nx, nu, nx_bar, nu_bar, dt)
@@ -920,15 +940,18 @@ function generate_matrices(As, Bs, Q, R, Cf, x0, u0, xf, nx, nu, nx_bar, nu_bar,
     for i in length(b)+1:nu:length(b)+nu_bar
         limits[i:i+nu-1,:] = u_lims
     end
-    # limits[length(b)+4:length(b)+6,:] .= 1.0
+    limits[length(b)+4:length(b)+6,1] = uf0
+    limits[length(b)+4:length(b)+6,2] = uf0
     limits[length(b)+nu_bar-3:length(b)+nu_bar-1, :] .= 0.0
 
 
     for i in length(b)+nu_bar+1:length(Cx[:,1]):length(b)+nu_bar+length(Cx_bar[:,1])
         limits[i:i+length(Cx[:,1])-1,:] = x_lims
     end
-    limits[length(b)+nu_bar+length(Cx_bar[:,1])-6, :] .= 0.0
-    
+    # limits[length(b)+nu_bar+length(Cx_bar[:,1])-6, :] .= 0.0
+    limits[length(b)+nu_bar+length(Cx_bar[:,1])-(length(Cx[:,1])*1+2), :] .= 0.0 
+    limits[length(b)+nu_bar+length(Cx_bar[:,1])-(length(Cx[:,1])*2+2), :] .= 0.0
+
     return Q, H, q, limits[:,1], limits[:,2]
 end 
 
